@@ -1,0 +1,4 @@
+ENV_PREFIX="SHOP_EMP_"
+EMP_SERVICE_NAME="employees"
+SHOP_SERVICE_NAME="shops"
+FULL_SERVICE_NAME="shops-employees"

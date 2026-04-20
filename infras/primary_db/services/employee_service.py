@@ -19,7 +19,7 @@ class EmployeeService(BaseServiceModel):
         super().__init__(session)
         self.employee_repo_obj=EmployeeRepo(session=session)
 
-    @start_db_transaction
+
     async def create(self, data:CreateEmployeeSchema,account_id:str,account_info:dict):
         account_info=account_info
         if not account_info['is_new']:
@@ -45,7 +45,7 @@ class EmployeeService(BaseServiceModel):
         res=await self.employee_repo_obj.create(data=data)
         return res
 
-    @start_db_transaction
+
     async def update(self, data:UpdateEmployeeSchema,account_info:dict):
 
         if not account_info:
@@ -71,7 +71,6 @@ class EmployeeService(BaseServiceModel):
 
         return res
 
-    @start_db_transaction
     async def delete(self,employee_id:str,shop_id:str,account_id:str):
         res=await self.employee_repo_obj.delete(employee_id=employee_id,shop_id=shop_id,added_acc_id=account_id)
         return res

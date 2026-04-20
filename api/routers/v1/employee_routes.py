@@ -14,11 +14,11 @@ router=APIRouter(
 PG_ASYNC_SESSION=Annotated[AsyncSession,Depends(get_pg_async_session)]
 
 # Write methods
-@router.post('/')
+@router.post('')
 async def create(data:CreateEmployeeSchema,session:PG_ASYNC_SESSION):
     return await HandleEmployeeRequest(session=session).create(data=data,account_id="")
 
-@router.put('/')
+@router.put('')
 async def update(data:UpdateEmployeeSchema,session:PG_ASYNC_SESSION):
     return await HandleEmployeeRequest(session=session).update(data=data,account_id="")
 
@@ -40,7 +40,7 @@ async def get_by_empid(session:PG_ASYNC_SESSION,employee_id:str,timezone:Optiona
     return await HandleEmployeeRequest(session=session).getby_id(employee_id=employee_id,timezone=timezone)
 
 
-@router.get('/')
+@router.get('')
 async def get_all(session:PG_ASYNC_SESSION,timezone:Optional[TimeZoneEnum]=Query(TimeZoneEnum.Asia_Kolkata),q:Optional[str]=Query(""),limit:Optional[int]=Query(10),offset:int=Query(1)):
     """This route-method for internal use only not to expose it on public !"""
     return await HandleEmployeeRequest(session=session).get_all(timezone=timezone,q=q,limit=limit,offset=offset)

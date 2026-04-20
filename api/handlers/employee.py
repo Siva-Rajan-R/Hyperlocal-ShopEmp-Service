@@ -26,7 +26,7 @@ class HandleEmployeeRequest:
         self.session=session
 
     async def create(self,data:CreateEmployeeSchema,account_id:str):
-        await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
+        # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
         if not (await ShopService(session=self.session).getby_id(shop_id=data.shop_id,timezone=TimeZoneEnum.Asia_Kolkata)):
             raise HTTPException(
                 status_code=404,
@@ -68,7 +68,7 @@ class HandleEmployeeRequest:
 
     async def update(self,data:UpdateEmployeeSchema,account_id:str):
         # need to do a pre operation steps
-        await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
+        # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
         is_owner=await ShopService(session=self.session).getby_shop_acc_id(account_id=account_id,shop_id=data.shop_id,timezone=TimeZoneEnum.Asia_Kolkata)
         if not is_owner:
             is_employee=await EmployeeRepo(session=self.session).is_employee_exists(employee_account_id=account_id,shop_id=data.shop_id)

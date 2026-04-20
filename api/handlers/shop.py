@@ -26,7 +26,7 @@ class HandleShopRequest:
     @catch_errors
     async def create(self, data:CreateShopSchema,account_id:str):
         
-        await validate_fields(service_name="SHOP",shop_id="",incoming_fields=data.datas)
+        # await validate_fields(service_name="SHOP",shop_id="",incoming_fields=data.datas)
 
         res=await ShopService(session=self.session).create(data=data,account_id=account_id)
 
@@ -42,7 +42,7 @@ class HandleShopRequest:
     
     @catch_errors
     async def update(self, data:UpdateShopSchema,account_id:str):
-        await validate_fields(service_name="SHOP",shop_id="",incoming_fields=data.datas)
+        # await validate_fields(service_name="SHOP",shop_id="",incoming_fields=data.datas)
         res=await ShopService(session=self.session).update(data=data,account_id=account_id)
         if res:
             return SuccessResponseTypDict(

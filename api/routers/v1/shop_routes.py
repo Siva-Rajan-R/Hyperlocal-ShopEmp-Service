@@ -12,11 +12,11 @@ router=APIRouter(
 PG_ASYNC_SESSION=Annotated[AsyncSession,Depends(get_pg_async_session)]
 
 # Write methods
-@router.post('/')
+@router.post('')
 async def create(data:CreateShopSchema,session:PG_ASYNC_SESSION):
     return await HandleShopRequest(session=session).create(data=data,account_id="")
 
-@router.put('/')
+@router.put('')
 async def update(data:UpdateShopSchema,session:PG_ASYNC_SESSION):
     return await HandleShopRequest(session=session).update(data=data,account_id="")
 
@@ -39,6 +39,6 @@ async def get_by_shopid(session:PG_ASYNC_SESSION,shop_id:str,timezone:Optional[T
 async def search(session:PG_ASYNC_SESSION,q:str=Query(...),limit:Optional[int]=Query(5)):
     return await HandleShopRequest(session=session).search(query=q,limit=limit)
 
-@router.get('/')
+@router.get('')
 async def get_all(session:PG_ASYNC_SESSION,timezone:Optional[TimeZoneEnum]=Query(TimeZoneEnum.Asia_Kolkata),q:Optional[str]=Query(""),limit:Optional[int]=Query(10),offset:int=Query(1)):
     return await HandleShopRequest(session=session).get(timezone=timezone,query=q,limit=limit,offset=offset)

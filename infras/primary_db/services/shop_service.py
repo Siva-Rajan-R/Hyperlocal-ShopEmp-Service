@@ -21,7 +21,6 @@ class ShopService(BaseServiceModel):
 
 
     @catch_errors
-    @start_db_transaction
     async def create(self, data:CreateShopSchema,account_id:str):
         shop_id:str=generate_uuid()
         data=CreateShopDbSchema(
@@ -40,7 +39,6 @@ class ShopService(BaseServiceModel):
         
     
     @catch_errors
-    @start_db_transaction
     async def update(self, data:UpdateShopSchema,account_id:str):
         res=await self.shop_repo_obj.update(data=UpdateShopDbSchema(**data.model_dump(exclude_unset=True,exclude_none=True),is_verified=False,account_id=account_id))
         return res

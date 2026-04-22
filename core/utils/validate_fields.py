@@ -6,6 +6,37 @@ from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDic
 
 
 
+async def validate_internal_fields(fields_tocheck:dict,incoming_fields:dict):
+    combined_fields={**fields_tocheck,**incoming_fields}
+    if len(combined_fields)!=len(incoming_fields):
+        raise HTTPException(
+                status_code=422,
+                detail=ErrorResponseTypDict(
+                    msg="Error : Creating Shop",
+                    description=f"Invalid Fields, Please enter valid fields {fields_tocheck}",
+                    success=False,
+                    status_code=422
+                )
+            )
+
+
+    for key,value in fields_tocheck.items():
+        if type(incoming_fields[key])!=value:
+            raise HTTPException(
+                status_code=422,
+                detail=ErrorResponseTypDict(
+                    msg="Error : Creating Shop",
+                    description=f"Invalid data type for field {key}, should be {value}",
+                    success=False,
+                    status_code=422
+                )
+            )
+    
+
+    return True
+
+
+
 
 async def validate_fields(service_name:str,shop_id:str,incoming_fields:dict):
     fields=await get_fields(service_name=service_name,shop_id=shop_id)

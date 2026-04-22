@@ -38,7 +38,11 @@ class AccountsConsumer(BaseConsumerModel):
                 event_data:dict=self.payload['data']
                 accounts_data:dict=event_data.get("accounts")
                 employees_data:dict=event_data.get("employees")
-                employess_base_datas:dict=employees_data.get("datas")
+
+                ic(event_data)
+                ic(accounts_data)
+                ic(employees_data)
+
                 if not accounts_data or not employees_data:
                     raise BussinessError(
                         type=ErrorTypeSEnum.BUSSINESS_ERROR,
@@ -53,7 +57,7 @@ class AccountsConsumer(BaseConsumerModel):
                 
                 is_new=accounts_data['is_new']
                 
-                data=CreateEmployeeSchema(**employees_data)
+                data=CreateEmployeeSchema(datas=employees_data)
                 res=await EmployeeService(session=session).create(
                     data=data,
                     account_id=employees_data['account_id'],
@@ -78,10 +82,10 @@ class AccountsConsumer(BaseConsumerModel):
                     employee_id=res.id,
                     account_id=accounts_data['id'],
                     shop_id=employees_data['shop_id'],
-                    email=employess_base_datas['email'],
-                    name=employess_base_datas['name'],
-                    mobile_number=employess_base_datas['mobile_number'],
-                    role=employess_base_datas['role'],
+                    email=employees_data['email'],
+                    name=employees_data['name'],
+                    mobile_number=employees_data['mobile_number'],
+                    role=employees_data['role'],
                     is_accepted=False,
                     added_by=accounts_data['owner_name'],
 
@@ -124,7 +128,7 @@ class AccountsConsumer(BaseConsumerModel):
             event_data:dict=self.payload['data']
             accounts_data:dict=event_data.get("accounts")
             employees_data:dict=event_data.get("employees")
-            employess_base_datas:dict=employees_data.get("datas")
+
             if not accounts_data or not employees_data:
                 raise BussinessError(
                     type=ErrorTypeSEnum.BUSSINESS_ERROR,
@@ -138,7 +142,7 @@ class AccountsConsumer(BaseConsumerModel):
                 )
             
             
-            data=UpdateEmployeeSchema(**employees_data)
+            data=UpdateEmployeeSchema(datas=employees_data)
             res=await EmployeeService(session=session).update(
                 data=data,
                 account_info=accounts_data
@@ -154,12 +158,12 @@ class AccountsConsumer(BaseConsumerModel):
                         code=ErrorTypeSEnum.BUSSINESS_ERROR.value
                     )
                 )
-            ic(employess_base_datas)
             readdb_data=ReadDbEmployeeUpdateModel(
-                name=employess_base_datas['name'],
-                is_accepted=employess_base_datas['is_accepted'],
-                role=employess_base_datas['role'],
-                mobile_number=employess_base_datas['mobile_number']
+                name=employees_data['name'],
+                is_accepted=False,
+                role=employees_data['role'],
+                mobile_number=employees_data['mobile_number'],
+                email=employees_data['email'],
 
             )
 

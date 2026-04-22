@@ -44,7 +44,6 @@ class ShopService(BaseServiceModel):
         return res
     
     @catch_errors
-    @start_db_transaction
     async def delete(self,shop_id:str,account_id:str):
         res=await self.shop_repo_obj.delete(shop_id=shop_id,account_id=account_id)
         return res

@@ -18,6 +18,7 @@ class ReadDbEmployeeUpdateModel(BaseModel):
     is_accepted:Optional[bool]=None
     role:Optional[str]=None
     mobile_number:Optional[str]=None
+    email:Optional[EmailStr]=None
 
 class ReadDbEmployeeReadModel(ReadDbEmployeeCreateModel):
     ...

@@ -3,6 +3,7 @@ from infras.primary_db.main import get_pg_async_session,AsyncSession
 from typing import Annotated
 from ...handlers.employee import HandleEmployeeRequest,CreateEmployeeSchema,UpdateEmployeeSchema,Optional,TimeZoneEnum
 from infras.read_db.models.employee_model import ReadDbEmployeeReadModel
+
 from typing import List
 
 
@@ -43,4 +44,4 @@ async def get_by_empid(session:PG_ASYNC_SESSION,employee_id:str,timezone:Optiona
 @router.get('')
 async def get_all(session:PG_ASYNC_SESSION,timezone:Optional[TimeZoneEnum]=Query(TimeZoneEnum.Asia_Kolkata),q:Optional[str]=Query(""),limit:Optional[int]=Query(10),offset:int=Query(1)):
     """This route-method for internal use only not to expose it on public !"""
-    return await HandleEmployeeRequest(session=session).get_all(timezone=timezone,q=q,limit=limit,offset=offset)
+    return await HandleEmployeeRequest(session=session).get_all(timezone=timezone,q=q,limit=limit,offset=offset,read_db=True)

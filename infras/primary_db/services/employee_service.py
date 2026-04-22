@@ -1,3 +1,4 @@
+from icecream import ic
 from ..repos.employee_repo import EmployeeRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from schemas.v1.db_schemas.employee_schema import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
@@ -22,21 +23,25 @@ class EmployeeService(BaseServiceModel):
 
     async def create(self, data:CreateEmployeeSchema,account_id:str,account_info:dict):
         account_info=account_info
+        data=data.datas
         if not account_info['is_new']:
             is_owner=await ShopService(session=self.session).getby_accountid(account_id=account_info['id'],timezone=TimeZoneEnum.Asia_Kolkata)
             if len(is_owner)>0:
                 return False
             
-            is_emp_exists=await self.employee_repo_obj.is_employee_exists(employee_account_id=account_info['id'],shop_id=data.shop_id)
+            is_emp_exists=await self.employee_repo_obj.is_employee_exists(employee_account_id=account_info['id'],shop_id=data['shop_id'])
             if is_emp_exists:
                 return False
         
 
-        data.datas['name']=None
-        data.datas['mobile_number']=None
+        data['name']=None
+        data['mobile_number']=None
         employee_id:str=generate_uuid()
+        data['id']=employee_id
+        data['account_id']=account_info['id']
         data=CreateEmployeeDbSchema(
-            **data.model_dump(),
+            datas=data,
+            shop_id=data['shop_id'],
             id=employee_id,
             added_by=account_id,
             is_accepted=False,
@@ -47,24 +52,28 @@ class EmployeeService(BaseServiceModel):
 
 
     async def update(self, data:UpdateEmployeeSchema,account_info:dict):
-
+        data=data.datas
         if not account_info:
             return False
         
         acc_name:str=account_info.get('name')
         acc_mobile_number:str=account_info.get('mobile_number')
 
-        emp_name:str=data.datas['name']
-        emp_mobile_number:str=data.datas['mobile_number']
+        emp_name:str=data['name']
+        emp_mobile_number:str=data['mobile_number']
 
 
         if (acc_name and emp_name) and acc_name.lower()==emp_name.lower():
-            data.datas['name']=None
-        if (acc_mobile_number and emp_mobile_number)and acc_mobile_number==emp_mobile_number:
-            data.datas['mobile_number']=None
+            data['name']=None
+        if (acc_mobile_number and emp_mobile_number) and acc_mobile_number==emp_mobile_number:
+            data['mobile_number']=None
 
+        ic(data)
         data=UpdateEmployeeDbSchema(
-            **data.model_dump(mode="json",exclude_unset=True)
+            datas=data,
+            account_id=data['account_id'],
+            shop_id=data['shop_id'],
+            id=data['id']
         )
 
         res=await self.employee_repo_obj.update(data=data)

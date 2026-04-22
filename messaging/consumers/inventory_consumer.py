@@ -34,8 +34,17 @@ class InventoryConsumer(BaseConsumerModel):
                         user_msg="Invalid shop id"
                     )
                 )
-        shop_data=shop_data.model_dump(mode='json')
-        ic(shop_data,type(shop_data['address']))
+            
+        import datetime
+        ic(shop_data)
+        shop_data={**shop_data.get("datas"),"id":shop_data.get("id")}
+        ic(shop_data)
+
+        for k,v in shop_data.items():
+            if isinstance(v, (datetime.date, datetime.datetime)):
+                shop_data[k] = v.isoformat()
+        ic(shop_data)
+
         return SuccessMessagingTypDict(
             response=shop_data,
             set_response=True,

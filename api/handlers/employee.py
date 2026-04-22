@@ -1,5 +1,5 @@
 from infras.primary_db.services.employee_service import EmployeeService,AsyncSession
-from schemas.v1.request_schemas.employee_schema import CreateEmployeeSchema,UpdateEmployeeSchema
+from schemas.v1.request_schemas.employee_schema import CreateEmployeeSchema,UpdateEmployeeSchema,CREATE_EMPLOYEE_MANDATORY_FIELDS,UPDATE_EMPLOYEE_MANDATORY_FIELDS
 from messaging.saga_producer import SagaProducer,SagaStatusEnum
 from core.data_formats.enums.role_enums import RoleEnum
 from infras.primary_db.services.shop_service import ShopService
@@ -19,15 +19,18 @@ from typing import Optional
 from infras.read_db.main import MONGO_CLIENT,EMPLOYEES_COLLECTION
 from core.constants import EMP_SERVICE_NAME,SHOP_SERVICE_NAME
 from icecream import ic
-from core.utils.validate_fields import validate_fields
+from core.utils.validate_fields import validate_fields,validate_internal_fields
 
 class HandleEmployeeRequest:
     def __init__(self,session:AsyncSession):
         self.session=session
 
     async def create(self,data:CreateEmployeeSchema,account_id:str):
-        # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
-        if not (await ShopService(session=self.session).getby_id(shop_id=data.shop_id,timezone=TimeZoneEnum.Asia_Kolkata)):
+        # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)4
+        await validate_internal_fields(fields_tocheck=CREATE_EMPLOYEE_MANDATORY_FIELDS,incoming_fields=data.datas)
+        shop_id=data.datas.get("shop_id")
+        ic(data.datas)
+        if not (await ShopService(session=self.session).getby_id(shop_id=shop_id,timezone=TimeZoneEnum.Asia_Kolkata)):
             raise HTTPException(
                 status_code=404,
                 detail=ErrorResponseTypDict(
@@ -38,10 +41,13 @@ class HandleEmployeeRequest:
                 )
             )
         
-        data=data.model_dump(mode='json')
+        data=data.datas
         data['account_id']=account_id
         data['source']='marketplace'
 
+        ic(data)
+
+        # for checking the accounts
         saga_id:str=generate_uuid()
         payload={'employees':data}
         r_key=generate_routingkey(domain=EMP_SERVICE_NAME,work_for=EMP_SERVICE_NAME,action=RoutingkeyActions.CREATE,state=RoutingkeyState.REQUESTED,version=RoutingkeyVersions.V1)
@@ -69,9 +75,10 @@ class HandleEmployeeRequest:
     async def update(self,data:UpdateEmployeeSchema,account_id:str):
         # need to do a pre operation steps
         # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
-        is_owner=await ShopService(session=self.session).getby_shop_acc_id(account_id=account_id,shop_id=data.shop_id,timezone=TimeZoneEnum.Asia_Kolkata)
+        await validate_internal_fields(fields_tocheck=UPDATE_EMPLOYEE_MANDATORY_FIELDS,incoming_fields=data.datas)
+        is_owner=await ShopService(session=self.session).getby_shop_acc_id(account_id=account_id,shop_id=data.datas['shop_id'],timezone=TimeZoneEnum.Asia_Kolkata)
         if not is_owner:
-            is_employee=await EmployeeRepo(session=self.session).is_employee_exists(employee_account_id=account_id,shop_id=data.shop_id)
+            is_employee=await EmployeeRepo(session=self.session).is_employee_exists(employee_account_id=account_id,shop_id=data.datas['shop_id'])
             if not is_employee or is_employee['role']!=RoleEnum.SUPER_ADMIN.value:
                 raise HTTPException(
                     status_code=400,
@@ -83,7 +90,7 @@ class HandleEmployeeRequest:
                     )
                 )
         
-        data=data.model_dump(mode='json',exclude_unset=True)
+        data=data.datas
 
         saga_id:str=generate_uuid()
         saga_payload={'employees':data}

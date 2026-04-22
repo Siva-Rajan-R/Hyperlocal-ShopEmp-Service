@@ -105,7 +105,6 @@ class EmployeeRepo(BaseRepoModel):
                     or_(
                         Employees.id.ilike(search_term),
                         Employees.account_id.ilike(search_term),
-                        func.cast(Employees.is_accepted,String).ilike(search_term),
                         func.cast(created_at,String).ilike(search_term)
                     ),
                     Employees.sequence_id>cursor

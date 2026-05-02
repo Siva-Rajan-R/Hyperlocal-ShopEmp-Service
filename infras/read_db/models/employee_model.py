@@ -1,5 +1,5 @@
 from pydantic import BaseModel,EmailStr
-from core.data_formats.enums.role_enums import RoleEnum
+from core.data_formats.enums.employee_enums import EmployeeRoleEnums
 from typing import Optional
 
 class ReadDbEmployeeCreateModel(BaseModel):

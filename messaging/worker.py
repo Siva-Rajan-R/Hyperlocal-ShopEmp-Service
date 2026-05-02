@@ -1,5 +1,6 @@
 from .main import RabbitMQMessagingConfig,ExchangeType
-from .controllers.controller import ConsumersHandler
+from .controllers.producer_controller import producer_main_controller
+from .controllers.service_controller import service_main_controller
 import asyncio
 
 async def worker():
@@ -8,8 +9,11 @@ async def worker():
 
     # Exchanges
     exchanges=[
-        {'name':'accounts.employees.employees.exchange','exc_type':ExchangeType.TOPIC},
-        {'name':'inventory.inventory.shops.exchange','exc_type':ExchangeType.TOPIC}
+        {'name':'shops.service.exchange','exc_type':ExchangeType.DIRECT},
+        {'name':'shops.producer.exchange','exc_type':ExchangeType.DIRECT},
+
+        {'name':'employees.service.exchange','exc_type':ExchangeType.DIRECT},
+        {'name':'employees.producer.exchange','exc_type':ExchangeType.DIRECT},
     ]
 
     for exchange in exchanges:
@@ -17,8 +21,11 @@ async def worker():
 
     # Queues
     queues=[
-        {'exc_name':'accounts.employees.employees.exchange','q_name':'accounts.employees.employees.queue','r_key':'accounts.employees.*.*.v1'},
-        {'exc_name':'inventory.inventory.shops.exchange','q_name':'inventory.inventory.shops.queue','r_key':'inventory.inventory.*.*.v1'}
+        {'exc_name':'shops.service.exchange','q_name':'shops.service.queue','r_key':'shops.service.routing.key'},
+        {'exc_name':'shops.producer.exchange','q_name':'shops.producer.queue','r_key':'shops.producer.routing.key'},
+
+        {'exc_name':'employees.service.exchange','q_name':'employees.service.queue','r_key':'employees.service.routing.key'},
+        {'exc_name':'employees.producer.exchange','q_name':'employees.producer.queue','r_key':'employees.producer.routing.key'},
     ]
 
     for queue in queues:
@@ -30,8 +37,12 @@ async def worker():
 
     # Consumers
     consumers=[
-        {'q_name':'accounts.employees.employees.queue','handler':ConsumersHandler.main_handler},
-        {'q_name':'inventory.inventory.shops.queue','handler':ConsumersHandler.main_handler}
+        {'q_name':'employees.service.queue','handler':service_main_controller},
+        {'q_name':'shops.service.queue','handler':service_main_controller},
+
+        {'q_name':'employees.producer.queue','handler':producer_main_controller},
+        {'q_name':'shops.producer.queue','handler':producer_main_controller}
+        
     ]
 
     for consumer in consumers:

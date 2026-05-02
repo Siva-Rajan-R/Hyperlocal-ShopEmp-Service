@@ -1,8 +1,9 @@
 from infras.primary_db.repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from infras.primary_db.services.shop_service import ShopService
-from schemas.v1.db_schemas.shop_schema import CreateShopDbSchema,UpdateShopDbSchema
-from schemas.v1.request_schemas.shop_schema import CreateShopSchema,UpdateShopSchema
+from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByAccountIdSchema,GetShopByIdSchema
+from schemas.v1.response_schemas.user_schemas.shop_schemas import ShopCreateResponseSchema,ShopUpdateResponseSchema,ShopDeleteResponseSchema,ShopGetResponseSchema
 from models.service_models.base_service_model import BaseServiceModel
 from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_transaction
 from core.decorators.error_handler_dec import catch_errors
@@ -23,7 +24,6 @@ class HandleShopRequest:
         self.session=session
 
 
-    @catch_errors
     async def create(self, data:CreateShopSchema,account_id:str):
         
         # await validate_fields(service_name="SHOP",shop_id="",incoming_fields=data.datas)
@@ -36,11 +36,12 @@ class HandleShopRequest:
                     msg="Shop created successfully",
                     status_code=201,
                     success=True
-                )
+                ),
+                data=ShopCreateResponseSchema(**res) if res else None
             )
         
     
-    @catch_errors
+
     async def update(self, data:UpdateShopSchema,account_id:str):
         # await validate_fields(service_name="SHOP",shop_id="",incoming_fields=data.datas)
         res=await ShopService(session=self.session).update(data=data,account_id=account_id)
@@ -50,7 +51,8 @@ class HandleShopRequest:
                     msg="Shop updated successfully",
                     success=True,
                     status_code=200
-                )
+                ),
+                data=ShopUpdateResponseSchema(**res) if res else None
             )
         
         raise HTTPException(
@@ -63,16 +65,17 @@ class HandleShopRequest:
             )
         )
     
-    @catch_errors
-    async def delete(self,shop_id:str,account_id:str):
-        res=await ShopService(session=self.session).delete(shop_id=shop_id,account_id=account_id)
+
+    async def delete(self,data:DeleteShopSchema,account_id:str):
+        res=await ShopService(session=self.session).delete(data=data,account_id=account_id)
         if res:
             return SuccessResponseTypDict(
                 detail=BaseResponseTypDict(
                     msg="Shop deleted successfully",
                     success=True,
                     status_code=200
-                )
+                ),
+                data=ShopDeleteResponseSchema(**res) if res else None
             )
         
         raise HTTPException(
@@ -86,10 +89,10 @@ class HandleShopRequest:
         )
     
 
-    @catch_errors
-    async def get(self,timezone:TimeZoneEnum,query:Optional[str]='',limit:Optional[int]=10,offset:Optional[int]=0):
+
+    async def get(self,data:GetAllShopsSchema):
         """This repo method for internal use only not to expose it on public !"""
-        res=await ShopService(session=self.session).get(timezone=timezone,query=query,limit=limit,offset=offset)
+        res=await ShopService(session=self.session).get(data=data)
 
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
@@ -97,13 +100,13 @@ class HandleShopRequest:
                 success=True,
                 status_code=200
             ),
-            data=res
+            data=[ShopGetResponseSchema(**r) for r in res]
         )
     
 
-    @catch_errors
-    async def getby_id(self,shop_id:str,timezone:TimeZoneEnum):
-        res=await ShopService(session=self.session).getby_id(shop_id=shop_id,timezone=timezone)
+
+    async def getby_id(self,data:GetShopByIdSchema):
+        res=await ShopService(session=self.session).getby_id(data=data)
 
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
@@ -111,12 +114,13 @@ class HandleShopRequest:
                 success=True,
                 status_code=200
             ),
-            data=res
+            data=ShopGetResponseSchema(**res) if res else None
         )
     
-    @catch_errors
-    async def getby_shop_acc_id(self,shop_id:str,account_id:str,timezone:TimeZoneEnum):
-        res=await ShopService(session=self.session).getby_shop_acc_id(shop_id=shop_id,account_id=account_id,timezone=timezone)
+
+
+    async def getby_accountid(self,data:GetShopByAccountIdSchema):
+        res=await ShopService(session=self.session).getby_accountid(data=data)
 
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
@@ -124,34 +128,20 @@ class HandleShopRequest:
                 success=True,
                 status_code=200
             ),
-            data=res
+            data=[ShopGetResponseSchema(**r) for r in res]
         )
     
 
-    @catch_errors
-    async def getby_accountid(self,account_id:str,timezone:TimeZoneEnum):
-        res=await ShopService(session=self.session).getby_accountid(account_id=account_id,timezone=timezone)
 
-        return SuccessResponseTypDict(
-            detail=BaseResponseTypDict(
-                msg="Shops fetched successfully",
-                success=True,
-                status_code=200
-            ),
-            data=res
-        )
-    
+    # async def search(self, query:str, limit:int):
+    #     res=await ShopService(session=self.session).search(query=query,limit=limit)
 
-    @catch_errors
-    async def search(self, query:str, limit:int):
-        res=await ShopService(session=self.session).search(query=query,limit=limit)
-
-        return SuccessResponseTypDict(
-            detail=BaseResponseTypDict(
-                msg="Shops fetched successfully",
-                success=True,
-                status_code=200
-            ),
-            data=res
-        )
+    #     return SuccessResponseTypDict(
+    #         detail=BaseResponseTypDict(
+    #             msg="Shops fetched successfully",
+    #             success=True,
+    #             status_code=200
+    #         ),
+    #         data=res
+    #     )
 

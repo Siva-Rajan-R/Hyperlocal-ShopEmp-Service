@@ -1,7 +1,8 @@
 from infras.primary_db.services.employee_service import EmployeeService,AsyncSession
-from schemas.v1.request_schemas.employee_schema import CreateEmployeeSchema,UpdateEmployeeSchema,CREATE_EMPLOYEE_MANDATORY_FIELDS,UPDATE_EMPLOYEE_MANDATORY_FIELDS
+from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,GetEmployeeByIdSchema,GetAllEmployeesSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema,DeleteEmployeeSchema
+from schemas.v1.response_schemas.user_schemas.employee_schemas import EmployeeGetResponseSchema,EmployeeCreateResponseSchema,EmployeeDeleteResponseSchema,EmployeeUpdateResponseSchema
 from messaging.saga_producer import SagaProducer,SagaStatusEnum
-from core.data_formats.enums.role_enums import RoleEnum
+from core.data_formats.enums.employee_enums import EmployeeRoleEnums
 from infras.primary_db.services.shop_service import ShopService
 from core.data_formats.enums.saga_enums import SagaTypeEnums
 from infras.primary_db.repos.employee_repo import EmployeeRepo
@@ -26,106 +27,82 @@ class HandleEmployeeRequest:
         self.session=session
 
     async def create(self,data:CreateEmployeeSchema,account_id:str):
-        # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)4
-        await validate_internal_fields(fields_tocheck=CREATE_EMPLOYEE_MANDATORY_FIELDS,incoming_fields=data.datas)
-        shop_id=data.datas.get("shop_id")
-        ic(data.datas)
-        if not (await ShopService(session=self.session).getby_id(shop_id=shop_id,timezone=TimeZoneEnum.Asia_Kolkata)):
+        # for checking the accounts
+        is_emp_exists=await EmployeeService(session=self.session).verify_employee(data=VerifyEmployeeSchema(shop_id=data.shop_id,email=data.email))
+        if is_emp_exists['exists']:
             raise HTTPException(
-                status_code=404,
+                status_code=409,
                 detail=ErrorResponseTypDict(
-                    msg="Error : Creating employee",
-                    description="Invalid shop id",
-                    status_code=404,
-                    success=False
+                    msg="Error : Creating Employee",
+                    description="Employee already exists",
+                    success=False,
+                    status_code=409
                 )
             )
         
-        data=data.datas
-        data['account_id']=account_id
-        data['source']='marketplace'
-
-        ic(data)
-
-        # for checking the accounts
         saga_id:str=generate_uuid()
-        payload={'employees':data}
-        r_key=generate_routingkey(domain=EMP_SERVICE_NAME,work_for=EMP_SERVICE_NAME,action=RoutingkeyActions.CREATE,state=RoutingkeyState.REQUESTED,version=RoutingkeyVersions.V1)
+        payload={'employees':{**data.model_dump(mode="json"),"account_id":account_id}}
+        r_key="accounts.service.routing.key"
+        r_exchange="accounts.service.exchange"
+        reply_key="employees.producer.routing.key"
+        reply_exchange="employees.producer.exchange"
+        reply_service_name="EMPLOYEES"
+        reply_entity_name="create_employee"
         return await SagaProducer.emit(
             session=self.session,
             routing_key=r_key,
-            exchange_name="employees.employees.accounts.exchange",
+            exchange_name=r_exchange,
+            headers={
+                "reply_key":reply_key,
+                "reply_exchange":reply_exchange,
+                "reply_service_name":reply_service_name,
+                "reply_entity_name":reply_entity_name,
+                "service_name":"ACCOUNTS",
+                "entity_name":"verify_account",
+                "body":{'email':data.email}
+
+            },
             saga_payload=CreateSagaStateSchema(
                 id=saga_id,
                 status=SagaStatusEnum.IN_PROGRESS,
                 type=SagaTypeEnums.EMPLOYEE_CREATED,
                 data=payload,
                 steps={
-                    f"accounts.{RoutingkeyActions.CREATE.value.lower()}":SagaStepsValueEnum.PENDING.value
+                    "ACCOUNT_VERIFICATION":SagaStepsValueEnum.PENDING.value,
+                    "ACCOUNT_CREATION":SagaStepsValueEnum.PENDING.value
                 },
                 execution=SagaStateExecutionTypDict(
-                    step="employees:create:requested",
-                    service=f"{EMP_SERVICE_NAME.upper()}-SERVICE"
+                    step="ACCOUNT_VERIFICATION",
+                    service="ACCOUNTS"
                 ),
                 error=None
             ),
         )
 
 
-    async def update(self,data:UpdateEmployeeSchema,account_id:str):
-        # need to do a pre operation steps
-        # await validate_fields(service_name="EMPLOYEE",shop_id=data.shop_id,incoming_fields=data.datas)
-        await validate_internal_fields(fields_tocheck=UPDATE_EMPLOYEE_MANDATORY_FIELDS,incoming_fields=data.datas)
-        is_owner=await ShopService(session=self.session).getby_shop_acc_id(account_id=account_id,shop_id=data.datas['shop_id'],timezone=TimeZoneEnum.Asia_Kolkata)
-        if not is_owner:
-            is_employee=await EmployeeRepo(session=self.session).is_employee_exists(employee_account_id=account_id,shop_id=data.datas['shop_id'])
-            if not is_employee or is_employee['role']!=RoleEnum.SUPER_ADMIN.value:
-                raise HTTPException(
-                    status_code=400,
-                    detail=ErrorResponseTypDict(
-                        status_code=400,
-                        msg="Error : Updating Employee",
-                        description="Insufficient Permission",
-                        success=False
-                    )
-                )
-        
-        data=data.datas
-
-        saga_id:str=generate_uuid()
-        saga_payload={'employees':data}
-        r_key=generate_routingkey(domain=EMP_SERVICE_NAME,work_for=EMP_SERVICE_NAME,action=RoutingkeyActions.UPDATE,state=RoutingkeyState.REQUESTED,version=RoutingkeyVersions.V1)
-        return await SagaProducer.emit(
-            session=self.session,
-            routing_key=r_key,
-            exchange_name="employees.employees.accounts.exchange",
-            saga_payload=CreateSagaStateSchema(
-                id=saga_id,
-                status=SagaStatusEnum.IN_PROGRESS,
-                type=SagaTypeEnums.EMPLOYEE_UPDATED,
-                steps={
-                    f'accounts.{RoutingkeyActions.UPDATE.value}':SagaStepsValueEnum.PENDING
-                },
-                execution=SagaStateExecutionTypDict(
-                    step="employees:update:requested",
-                    service=f"{EMP_SERVICE_NAME.upper()}-SERVICE"
-                ),
-                data=saga_payload,
-                error=None
-            )
+    async def update(self,data:UpdateEmployeeSchema):
+        res=await EmployeeService(session=self.session).update(data=data)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Employee Updated Successfully",
+                status_code=200,
+                success=True
+            ),
+            data=EmployeeUpdateResponseSchema(**res) if res else None
         )
     
 
-    async def delete(self,shop_id:str,employee_id:str,account_id:str):
-        res=await EmployeeService(session=self.session).delete(employee_id=employee_id,shop_id=shop_id,account_id=account_id)
+    async def delete(self,data:DeleteEmployeeSchema):
+        res=await EmployeeService(session=self.session).delete(data=data)
+        ic(res)
         if res:
-            await ReadDbEmployeeService(payload={},conditions={"employee_id":employee_id,'shop_id':shop_id}).delete()
             return SuccessResponseTypDict(
                 detail=BaseResponseTypDict(
-                    msg="Employee deleted successfully",
-                    status_code=200,
-                    success=True
-                )
+                    msg="Employee Deleted Successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=EmployeeDeleteResponseSchema(**res) if res else None
             )
         
         raise HTTPException(
@@ -138,27 +115,21 @@ class HandleEmployeeRequest:
             )
         )
     
-    async def get_all(self,q:str,limit:int,offset:int,timezone:TimeZoneEnum,read_db:Optional[bool]=True):
-        res=await ReadDbEmployeeService(payload={},conditions={}).get(query=q,limit=limit,offset=offset)
-        if not read_db:
-            res=await EmployeeService(session=self.session).get(offset=offset,limit=limit,query=q,timezone=timezone)
-
+    async def get_all(self,data:GetAllEmployeesSchema):
+        res=await EmployeeService(session=self.session).get(data=data)
+        ic(res)
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
                 msg="Employees fetched successfully",
                 status_code=200,
                 success=True
             ),
-            data=res
+
+            data=[EmployeeGetResponseSchema(**r) for r in res] if res else None
         )
     
-    async def getby_id(self,employee_id:str,timezone:TimeZoneEnum,read_db:Optional[bool]=True):
-        queries={
-            "employee_id":employee_id.strip()
-        }
-        res=await ReadDbEmployeeService(payload={},conditions={}).get_one(queries=queries)
-        if not read_db:
-            res=await EmployeeService(session=self.session).getby_id(employee_id=employee_id,timezone=timezone)
+    async def getby_id(self,data:GetEmployeeByIdSchema):
+        res=await EmployeeService(session=self.session).getby_id(data=data)
 
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
@@ -166,26 +137,18 @@ class HandleEmployeeRequest:
                 status_code=200,
                 success=True
             ),
-            data=res
+            data=EmployeeGetResponseSchema(**res) if res else None
         )
     
-    async def getby_shopid(self,shop_id:str,timezone:TimeZoneEnum,read_db:Optional[bool]=True):
-        
-        queries={
-            'shop_id':shop_id.strip()
-        }
-        ic(queries)
-        res=await ReadDbEmployeeService(payload={},conditions={}).getby_queries(queries=queries)
-        if not read_db:
-            res=await EmployeeService(session=self.session).getby_shopid(shop_id=shop_id,timezone=timezone)
-        ic(res)
+    async def getby_shopid(self,data:GetEmployeeByShopIdSchema):
+        res=await EmployeeService(session=self.session).getby_shopid(data=data)
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
                 msg="Employee fetched successfully",
                 status_code=200,
                 success=True
             ),
-            data=res
+            data=[EmployeeGetResponseSchema(**r) for r in res] if res else None
         )
 
     async def search(self,q:str,limit:int,read_db:Optional[bool]=True):

@@ -1,17 +1,17 @@
 from icecream import ic
 from ..repos.employee_repo import EmployeeRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
-from schemas.v1.db_schemas.employee_schema import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
-from schemas.v1.request_schemas.employee_schema import CreateEmployeeSchema,UpdateEmployeeSchema
+from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
+from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema
 from .shop_service import ShopService
 from models.service_models.base_service_model import BaseServiceModel
 from core.decorators.error_handler_dec import catch_errors
 from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional
+from typing import Optional,List,Union
 from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
-from core.data_formats.enums.role_enums import RoleEnum
+from core.data_formats.enums.employee_enums import EmployeeDepartmentEnums,EmployeeRoleEnums
 from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_transaction
 
 
@@ -21,93 +21,60 @@ class EmployeeService(BaseServiceModel):
         self.employee_repo_obj=EmployeeRepo(session=session)
 
 
-    async def create(self, data:CreateEmployeeSchema,account_id:str,account_info:dict):
-        account_info=account_info
-        data=data.datas
-        if not account_info['is_new']:
-            is_owner=await ShopService(session=self.session).getby_accountid(account_id=account_info['id'],timezone=TimeZoneEnum.Asia_Kolkata)
-            if len(is_owner)>0:
-                return False
-            
-            is_emp_exists=await self.employee_repo_obj.is_employee_exists(employee_account_id=account_info['id'],shop_id=data['shop_id'])
-            if is_emp_exists:
-                return False
-        
-
-        data['name']=None
-        data['mobile_number']=None
-        employee_id:str=generate_uuid()
-        data['id']=employee_id
-        data['account_id']=account_info['id']
-        data=CreateEmployeeDbSchema(
-            datas=data,
-            shop_id=data['shop_id'],
+    async def create(self, data:CreateEmployeeSchema,user_id:str,account_id:str)-> dict:
+        employee_id=generate_uuid()
+        data_toadd=CreateEmployeeDbSchema(
+            **data.model_dump(),
             id=employee_id,
-            added_by=account_id,
+            added_by=user_id,
             is_accepted=False,
-            account_id=account_info['id']
+            account_id=account_id
         )
-        res=await self.employee_repo_obj.create(data=data)
+        res=await self.employee_repo_obj.create(data=data_toadd)
         return res
 
 
-    async def update(self, data:UpdateEmployeeSchema,account_info:dict):
-        data=data.datas
-        if not account_info:
-            return False
-        
-        acc_name:str=account_info.get('name')
-        acc_mobile_number:str=account_info.get('mobile_number')
-
-        emp_name:str=data['name']
-        emp_mobile_number:str=data['mobile_number']
-
-
-        if (acc_name and emp_name) and acc_name.lower()==emp_name.lower():
-            data['name']=None
-        if (acc_mobile_number and emp_mobile_number) and acc_mobile_number==emp_mobile_number:
-            data['mobile_number']=None
-
-        ic(data)
+    async def update(self, data:UpdateEmployeeSchema,) -> dict | None:
+        data_toupdate=data=data.model_dump(exclude_unset=True,exclude_none=True)
         data=UpdateEmployeeDbSchema(
-            datas=data,
-            account_id=data['account_id'],
-            shop_id=data['shop_id'],
-            id=data['id']
+            **data_toupdate
         )
 
         res=await self.employee_repo_obj.update(data=data)
-
         return res
 
-    async def delete(self,employee_id:str,shop_id:str,account_id:str):
-        res=await self.employee_repo_obj.delete(employee_id=employee_id,shop_id=shop_id,added_acc_id=account_id)
+    async def delete(self,data:DeleteEmployeeSchema)-> dict | None:
+        res=await self.employee_repo_obj.delete(data=data)
         return res
     
 
-    async def get(self,offset:int,query:Optional[str]="",limit:Optional[int]=10,timezone:Optional[TimeZoneEnum]=TimeZoneEnum.Asia_Kolkata):
+    async def get(self,data:GetAllEmployeesSchema)-> List[dict] | list:
         """This service method for internal use only not to expose it on public !"""
-        res=await self.employee_repo_obj.get(
-            query=query,
-            limit=limit,
-            offset=offset,
-            timezone=timezone
-        )
+        res=await self.employee_repo_obj.get(data=data)
 
         return res
         
     
 
-    async def getby_id(self,employee_id:str,timezone:Optional[TimeZoneEnum]=TimeZoneEnum.Asia_Kolkata):
+    async def getby_id(self,data:GetEmployeeByIdSchema)-> dict | None:
         """This service method for internal use only not to expose it on public !"""
-        res=await self.employee_repo_obj.getby_id(employee_id=employee_id,timezone=timezone)
+        res=await self.employee_repo_obj.getby_id(data=data)
         return res
 
     
 
-    async def getby_shopid(self,shop_id:str,timezone:TimeZoneEnum):
+    async def getby_shopid(self,data:GetEmployeeByShopIdSchema)-> List[dict] | list:
         """This service method for internal use only not to expose it on public !"""
-        res=await self.employee_repo_obj.getby_shopid(shop_id=shop_id,timezone=timezone)
+        res=await self.employee_repo_obj.getby_shopid(data=data)
+        return res
+    
+
+    async def verify_employee(self,data:VerifyEmployeeSchema)->dict:
+        if not data.employee_id and not data.mobile_number and not data.email:
+            return {'id':'','exists':False}
+        
+        res=await self.employee_repo_obj.verify_employee(data=data)
+
         return res
     
     async def search(self, query:str, limit:int):

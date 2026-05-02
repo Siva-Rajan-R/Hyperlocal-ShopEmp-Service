@@ -1,5 +1,5 @@
 from .main import RabbitMQMessagingConfig
-from schemas.v1.request_schemas.employee_schema import CreateEmployeeSchema,UpdateEmployeeSchema
+from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema
 from sqlalchemy.ext.asyncio import AsyncSession
 from core.decorators.error_handler_dec import catch_errors
 from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
@@ -14,7 +14,7 @@ from hyperlocal_platform.core.typed_dicts.saga_status_typ_dict import SagaStateE
 
 class SagaProducer:
     @staticmethod
-    async def emit(session:AsyncSession,saga_payload:CreateSagaStateSchema,routing_key:str,exchange_name:str,headers:Optional[dict]={},):
+    async def emit(session:AsyncSession,saga_payload:CreateSagaStateSchema,routing_key:str,exchange_name:str,headers:Optional[dict]={}):
         rabbitmq_msg_obj=RabbitMQMessagingConfig()
         async with AsyncInfraDbLocalSession() as session:
             is_saga_created=await SagaStatesRepo(session=session).create(data=saga_payload)

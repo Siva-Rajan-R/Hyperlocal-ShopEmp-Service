@@ -24,7 +24,7 @@ async def update(data:UpdateEmployeeSchema,session:PG_ASYNC_SESSION):
     return await HandleEmployeeRequest(session=session).update(data=data)
 
 
-@router.delete('/{shop_id}/{employee_id}')
+@router.delete('/{shop_id}/{id}')
 async def delete(session:PG_ASYNC_SESSION,data:DeleteEmployeeSchema=Depends()):
     return await HandleEmployeeRequest(session=session).delete(data=data)
 
@@ -35,7 +35,7 @@ async def get_by_shopid(session:PG_ASYNC_SESSION,data:GetEmployeeByShopIdSchema=
     return await HandleEmployeeRequest(session=session).getby_shopid(data=data)
 
 
-@router.get('/by/{employee_id}')
+@router.get('/by/{shop_id}/{id}')
 async def get_by_empid(session:PG_ASYNC_SESSION,data:GetEmployeeByIdSchema=Depends()):
     """This route-method for internal use only not to expose it on public !"""
     return await HandleEmployeeRequest(session=session).getby_id(data=data)

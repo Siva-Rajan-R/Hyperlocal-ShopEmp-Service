@@ -34,7 +34,7 @@ class UpdateEmployeeSchema(BaseModel):
 
 
 class DeleteEmployeeSchema(BaseModel):
-    employee_id:str
+    id:str
     shop_id:str
 
 
@@ -51,7 +51,8 @@ class GetAllEmployeesSchema(BaseModel):
     }
 
 class GetEmployeeByIdSchema(BaseModel):
-    employee_id:str
+    shop_id:str
+    id:str
     timezone:Optional[TimeZoneEnum]=TimeZoneEnum.Asia_Kolkata
 
 class GetEmployeeByShopIdSchema(BaseModel):

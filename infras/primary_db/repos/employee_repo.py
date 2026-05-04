@@ -96,7 +96,7 @@ class EmployeeRepo(BaseRepoModel):
         employee_todel=(
             delete(Employees)
             .where(
-                Employees.id==data.employee_id,
+                Employees.id==data.id,
                 Employees.shop_id==data.shop_id
             )
         ).returning(
@@ -149,7 +149,8 @@ class EmployeeRepo(BaseRepoModel):
                 created_at,
             )
             .where(
-                Employees.id==data.employee_id,
+                Employees.shop_id==data.shop_id,
+                Employees.id==data.id,
             )
         )
 

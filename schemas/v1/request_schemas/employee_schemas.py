@@ -8,7 +8,7 @@ from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 
 # Optional Schemas
 class EmployeeOptionalFieldsSchema(BaseModel):
-    salary_rage:Optional[float]=0.0
+    salary_range:Optional[float]=0.0
     address:Optional[EmployeeAddressTypDict]={}
 
 # Writable Schemas

@@ -59,6 +59,14 @@ class EmployeeRepo(BaseRepoModel):
 
 
     @start_db_transaction
+    async def get_next_sequence(self, shop_id: str, start_from: int) -> int:
+        from sqlalchemy import text
+        seq_name = f"seq_employee_{shop_id.replace('-', '_').lower()}"
+        await self.session.execute(text(f"CREATE SEQUENCE IF NOT EXISTS {seq_name} START WITH {start_from}"))
+        res = await self.session.execute(text(f"SELECT nextval('{seq_name}')"))
+        return res.scalar_one()
+
+    @start_db_transaction
     async def create(self, data:CreateEmployeeDbSchema)-> dict:
         stmt=(
             insert(
@@ -217,3 +225,29 @@ class EmployeeRepo(BaseRepoModel):
         """This is just a wrapper for ABC(Abstract Class) of BaseRepo"""
         ...
 
+    async def get_overall_values(self, data: GetAllEmployeesSchema | GetEmployeeByShopIdSchema) -> dict:
+        search_term = f"%{data.query}%" if hasattr(data, 'query') else "%%"
+        
+        stmt = select(func.count(Employees.id).label("total_employees"))
+        
+        if hasattr(data, 'shop_id') and data.shop_id:
+            stmt = stmt.where(Employees.shop_id == data.shop_id)
+            
+        if hasattr(data, 'query') and data.query:
+            created_at = func.date(func.timezone(data.timezone.value, Employees.created_at))
+            stmt = stmt.where(
+                or_(
+                    Employees.id.ilike(search_term),
+                    Employees.ui_id.ilike(search_term),
+                    Employees.account_id.ilike(search_term),
+                    func.cast(created_at, String).ilike(search_term)
+                )
+            )
+
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        
+        return {
+            "total_employees": res["total_employees"] or 0
+        } if res else {
+            "total_employees": 0
+        }

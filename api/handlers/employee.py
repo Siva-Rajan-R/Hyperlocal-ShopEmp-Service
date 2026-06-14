@@ -120,6 +120,15 @@ class HandleEmployeeRequest:
     async def get_all(self,data:GetAllEmployeesSchema):
         res=await EmployeeService(session=self.session).get(data=data)
         ic(res)
+        
+        if data.offset in (0, 1):
+            data_to_send = {
+                "overall_datas": res.get("overall_datas", {}),
+                "datas": [EmployeeGetResponseSchema(**r) for r in res.get("datas", [])]
+            }
+        else:
+            data_to_send = [EmployeeGetResponseSchema(**r) for r in res.get("datas", [])]
+
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
                 msg="Employees fetched successfully",
@@ -127,7 +136,7 @@ class HandleEmployeeRequest:
                 success=True
             ),
 
-            data=[EmployeeGetResponseSchema(**r) for r in res] if res else None
+            data=data_to_send
         )
     
     async def getby_id(self,data:GetEmployeeByIdSchema):
@@ -144,13 +153,22 @@ class HandleEmployeeRequest:
     
     async def getby_shopid(self,data:GetEmployeeByShopIdSchema):
         res=await EmployeeService(session=self.session).getby_shopid(data=data)
+        
+        if data.offset in (0, 1):
+            data_to_send = {
+                "overall_datas": res.get("overall_datas", {}),
+                "datas": [EmployeeGetResponseSchema(**r) for r in res.get("datas", [])]
+            }
+        else:
+            data_to_send = [EmployeeGetResponseSchema(**r) for r in res.get("datas", [])]
+
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
                 msg="Employee fetched successfully",
                 status_code=200,
                 success=True
             ),
-            data=[EmployeeGetResponseSchema(**r) for r in res] if res else None
+            data=data_to_send
         )
 
     async def search(self,q:str,limit:int,read_db:Optional[bool]=True):

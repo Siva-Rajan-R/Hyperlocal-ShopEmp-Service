@@ -6,6 +6,7 @@ from datetime import date
 
 class CreateEmployeeDbSchema(BaseModel):
     id:str
+    ui_id:str
     account_id:str
     added_by:str
     shop_id:str

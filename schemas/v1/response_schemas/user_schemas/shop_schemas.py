@@ -6,6 +6,7 @@ from datetime import datetime
 
 class ShopCreateResponseSchema(BaseModel):
     id:str
+    user_id:str
     name:str
     ui_id:int
     category:str
@@ -18,6 +19,7 @@ class ShopCreateResponseSchema(BaseModel):
 
 class ShopUpdateResponseSchema(BaseModel):
     id:str
+    user_id:str
     name:str
     ui_id:int
     category:str
@@ -30,6 +32,7 @@ class ShopUpdateResponseSchema(BaseModel):
 
 class ShopDeleteResponseSchema(BaseModel):
     id:str
+    user_id:str
     name:str
     ui_id:int
     category:str
@@ -42,6 +45,7 @@ class ShopDeleteResponseSchema(BaseModel):
 
 class ShopGetResponseSchema(BaseModel):
     id:str
+    user_id:str
     name:str
     ui_id:int
     category:str

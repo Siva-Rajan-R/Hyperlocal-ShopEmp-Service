@@ -2,11 +2,10 @@ from pydantic import BaseModel,Field
 from core.data_formats.typ_dict.shop_typdict import ShopAddressTypDict,ShopBusinessInfoTypDict
 from core.data_formats.enums.shop_enums import ShopTypeEnum
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
-from typing import Optional,Dict,Any
+from typing import Optional,Dict,Any,List
 
 # Optional Fields
 class ShopOptionalFieldsSchemas(BaseModel):
-    description:Optional[str]=None
     emails:Optional[list]=None
     mobile_numbers:Optional[list]=None
     website:Optional[str]=None
@@ -16,11 +15,14 @@ class ShopOptionalFieldsSchemas(BaseModel):
 # Writable Schemas
 class CreateShopSchema(BaseModel):
     name:str
-    category:str
+    description:Optional[str]=None
+    tagline:Optional[str]=None
+    categories:List[str]
     business_infos:ShopBusinessInfoTypDict
     address:ShopAddressTypDict
-    image_urls:Optional[list]=[]
-    datas:Optional[ShopOptionalFieldsSchemas]={}
+    logo_url:Optional[str]=None
+    banner_url:Optional[str]=None
+    additional_infos:Optional[ShopOptionalFieldsSchemas]={}
 
 
 class UpdateShopSchema(BaseModel):
@@ -53,8 +55,8 @@ class GetShopByIdSchema(BaseModel):
     shop_id:str
     timezone:Optional[TimeZoneEnum]=Field(default=TimeZoneEnum.Asia_Kolkata)
 
-class GetShopByAccountIdSchema(BaseModel):
-    account_id:str
+class GetShopByUserIdSchema(BaseModel):
+    user_id:str
     timezone:Optional[TimeZoneEnum]=Field(default=TimeZoneEnum.Asia_Kolkata)
 
 class VerifyShoSchema(BaseModel):

@@ -20,7 +20,7 @@ class CreateEmployeeSchema(BaseModel):
     mobile_number:str
     email:EmailStr
     department:EmployeeDepartmentEnums
-    datas:Optional[EmployeeOptionalFieldsSchema]={}
+    additional_infos:Optional[EmployeeOptionalFieldsSchema]={}
 
 class UpdateEmployeeSchema(BaseModel):
     id:str
@@ -31,6 +31,11 @@ class UpdateEmployeeSchema(BaseModel):
     mobile_number:Optional[str]=None
     department:Optional[EmployeeDepartmentEnums]=None
     datas:Optional[EmployeeOptionalFieldsSchema]={}
+
+
+class SendVerifyEmployeeSchema(BaseModel):
+    id:str
+    shop_id:str
 
 
 class DeleteEmployeeSchema(BaseModel):

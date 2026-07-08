@@ -9,6 +9,8 @@ class ShopEmployeeSettings(BaseSettings):
     PG_DATABASE_URL:str
     MONGO_DB_URL:str
     ENVIRONMENT:EnvironmentEnum
+    DEB_SECRETS:str
+    DEB_APIKEY:str
 
     model_config={
         "case_sensitive":False,

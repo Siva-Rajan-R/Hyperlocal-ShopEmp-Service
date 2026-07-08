@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api.routers.v1 import employee_routes,shop_routes
+from api.routers.v1 import employee_routes,shop_routes,auth_routes
 from infras.primary_db.main import init_shop_employee_pg_db
 from contextlib import asynccontextmanager
 from icecream import ic
@@ -28,16 +28,16 @@ async def shop_employee_service_lifespan(app:FastAPI):
     finally:
         ic("...Stoping Shop-Employee Servcie...")
 
-debug=False
-openapi_url=None
-docs_url=None
-redoc_url=None
+# debug=False
+# openapi_url=None
+# docs_url=None
+# redoc_url=None
 
-if SETTINGS.ENVIRONMENT.value==EnvironmentEnum.DEVELOPMENT.value:
-    debug=True
-    openapi_url="/openapi.json"
-    docs_url="/docs"
-    redoc_url="/redoc"
+# if SETTINGS.ENVIRONMENT.value==EnvironmentEnum.DEVELOPMENT.value:
+debug=True
+openapi_url="/openapi.json"
+docs_url="/docs"
+redoc_url="/redoc"
 
 app=FastAPI(
     title="Shop-Employee Service",
@@ -54,5 +54,6 @@ app=FastAPI(
 # Routes to include
 app.include_router(shop_routes.router)
 app.include_router(employee_routes.router)
+app.include_router(auth_routes.router)
 
 

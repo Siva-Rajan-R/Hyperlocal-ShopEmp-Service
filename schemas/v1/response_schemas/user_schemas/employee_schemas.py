@@ -7,24 +7,30 @@ from datetime import datetime,date
 
 class EmployeeCreateResponseSchema(BaseModel):
     id:str
-    ui_id:int
+    ui_id:str
+    user_id:str
+    shop_id:str
     name:str
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
     department:EmployeeDepartmentEnums
+    accepted:bool
     created_at:datetime
     joined_date:date
     datas:Optional[dict]={}
 
 class EmployeeUpdateResponseSchema(BaseModel):
     id:str
-    ui_id:int
+    ui_id:str
+    user_id:str
+    shop_id:str
     name:str
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
     department:EmployeeDepartmentEnums
+    accepted:bool
     created_at:datetime
     updated_at:datetime
     joined_date:date
@@ -32,12 +38,15 @@ class EmployeeUpdateResponseSchema(BaseModel):
 
 class EmployeeDeleteResponseSchema(BaseModel):
     id:str
-    ui_id:int
+    ui_id:str
+    user_id:str
+    shop_id:str
     name:str
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
     department:EmployeeDepartmentEnums
+    accepted:bool
     created_at:datetime
     updated_at:datetime
     joined_date:date
@@ -47,12 +56,15 @@ class EmployeeDeleteResponseSchema(BaseModel):
 
 class EmployeeGetResponseSchema(BaseModel):
     id:str
-    ui_id:int
+    ui_id:str
+    user_id:str
+    shop_id:str
     name:str
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
     department:EmployeeDepartmentEnums
+    accepted:bool
     created_at:datetime
     updated_at:datetime
     joined_date:date

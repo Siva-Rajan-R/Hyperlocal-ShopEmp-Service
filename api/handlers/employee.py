@@ -1,84 +1,53 @@
 from infras.primary_db.services.employee_service import EmployeeService,AsyncSession
-from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,GetEmployeeByIdSchema,GetAllEmployeesSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema,DeleteEmployeeSchema
+from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,GetEmployeeByIdSchema,GetAllEmployeesSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema,DeleteEmployeeSchema,SendVerifyEmployeeSchema
 from schemas.v1.response_schemas.user_schemas.employee_schemas import EmployeeGetResponseSchema,EmployeeCreateResponseSchema,EmployeeDeleteResponseSchema,EmployeeUpdateResponseSchema
-from messaging.saga_producer import SagaProducer,SagaStatusEnum
 from core.data_formats.enums.employee_enums import EmployeeRoleEnums
 from infras.primary_db.services.shop_service import ShopService
-from core.data_formats.enums.saga_enums import SagaTypeEnums
-from infras.primary_db.repos.employee_repo import EmployeeRepo
 from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDict,BaseResponseTypDict,ErrorResponseTypDict
-from hyperlocal_platform.infras.saga.schemas import CreateSagaStateSchema
-from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
-from hyperlocal_platform.core.enums.saga_state_enum import SagaStepsValueEnum
-from hyperlocal_platform.core.typed_dicts.saga_status_typ_dict import SagaStateExecutionTypDict
-from hyperlocal_platform.core.utils.routingkey_builder import generate_routingkey,RoutingkeyActions,RoutingkeyState,RoutingkeyVersions
-from hyperlocal_platform.core.enums.routingkey_enum import RoutingkeyState,RoutingkeyActions
-from infras.read_db.services.employee_service import ReadDbEmployeeService
 from typing import Optional
-from infras.read_db.main import MONGO_CLIENT,EMPLOYEES_COLLECTION
-from core.constants import EMP_SERVICE_NAME,SHOP_SERVICE_NAME
 from icecream import ic
-from core.utils.validate_fields import validate_fields,validate_internal_fields
+from core.utils.token_utils import generate_verification_token, decode_verification_token
+from core.utils.email_sender import send_verification_email
 
 class HandleEmployeeRequest:
     def __init__(self,session:AsyncSession):
         self.session=session
 
-    async def create(self,data:CreateEmployeeSchema,account_id:str):
-        # for checking the accounts
+    async def create(self,data:CreateEmployeeSchema,user_id:str):
+        # Check if employee already exists by email in this shop
         is_emp_exists=await EmployeeService(session=self.session).verify_employee(data=VerifyEmployeeSchema(shop_id=data.shop_id,email=data.email))
         if is_emp_exists['exists']:
             raise HTTPException(
                 status_code=409,
                 detail=ErrorResponseTypDict(
                     msg="Error : Creating Employee",
-                    description="Employee already exists",
+                    description="Employee already exists in this shop",
                     success=False,
                     status_code=409
                 )
             )
         
-        saga_id:str=generate_uuid()
-        payload={'employees':{**data.model_dump(mode="json"),"account_id":account_id}}
-        r_key="accounts.service.routing.key"
-        r_exchange="accounts.service.exchange"
-        reply_key="employees.producer.routing.key"
-        reply_exchange="employees.producer.exchange"
-        reply_service_name="EMPLOYEES"
-        reply_entity_name="create_employee"
-
-        
-        return await SagaProducer.emit(
-            session=self.session,
-            routing_key=r_key,
-            exchange_name=r_exchange,
-            headers={
-                "reply_key":reply_key,
-                "reply_exchange":reply_exchange,
-                "reply_service_name":reply_service_name,
-                "reply_entity_name":reply_entity_name,
-                "service_name":"ACCOUNTS",
-                "entity_name":"verify_account",
-                "body":{'email':data.email}
-
-            },
-            saga_payload=CreateSagaStateSchema(
-                id=saga_id,
-                status=SagaStatusEnum.IN_PROGRESS,
-                type=SagaTypeEnums.EMPLOYEE_CREATED,
-                data=payload,
-                steps={
-                    "ACCOUNT_VERIFICATION":SagaStepsValueEnum.PENDING.value,
-                    "ACCOUNT_CREATION":SagaStepsValueEnum.PENDING.value
-                },
-                execution=SagaStateExecutionTypDict(
-                    step="ACCOUNT_VERIFICATION",
-                    service="ACCOUNTS"
+        res = await EmployeeService(session=self.session).create(data=data, owner_user_id=user_id)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Employee invited successfully. Verification email sent.",
+                    status_code=201,
+                    success=True
                 ),
-                error=None
-            ),
+                data=EmployeeCreateResponseSchema(**res)
+            )
+        
+        raise HTTPException(
+            status_code=500,
+            detail=ErrorResponseTypDict(
+                msg="Error : Creating Employee",
+                description="Database insert failed",
+                success=False,
+                status_code=500
+            )
         )
 
 
@@ -92,6 +61,35 @@ class HandleEmployeeRequest:
             ),
             data=EmployeeUpdateResponseSchema(**res) if res else None
         )
+    
+
+    async def send_verify(self,data:SendVerifyEmployeeSchema):
+        data_tocheck=GetEmployeeByIdSchema(id=data.id,shop_id=data.shop_id)
+        get_res=await EmployeeService(session=self.session).getby_id(data=data_tocheck)
+        ic(get_res)
+        if get_res:
+            if not get_res['accepted']:
+                token = generate_verification_token(employee_id=data.id, shop_id=data.shop_id)
+                await send_verification_email(email=get_res['email'], name=get_res['name'], token=token)
+            
+                return SuccessResponseTypDict(
+                        detail=BaseResponseTypDict(
+                            msg="Employee invited successfully. Verification email sent.",
+                            status_code=201,
+                            success=True
+                        )
+                    )
+
+        raise HTTPException(
+            status_code=400,
+            detail=ErrorResponseTypDict(
+                msg="Error : Sending Verfification",
+                description="Sending email failed",
+                success=False,
+                status_code=400
+            )
+        )
+
     
 
     async def delete(self,data:DeleteEmployeeSchema):
@@ -170,17 +168,14 @@ class HandleEmployeeRequest:
             ),
             data=data_to_send
         )
-
-    async def search(self,q:str,limit:int,read_db:Optional[bool]=True):
-        res=await ReadDbEmployeeService(payload={},conditions={}).get(query=q,limit=limit)
-        if not read_db:
-            res=await EmployeeService(session=self.session).search(query=q,limit=limit)
-
+    
+    async def search(self,q:str,limit:int):
+        # We can implement a simple PG-based search if needed, fallback to empty for now
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
-                msg="Employee fetched successfully",
+                msg="Employee search fetched successfully",
                 status_code=200,
                 success=True
             ),
-            data=res
+            data=[]
         )

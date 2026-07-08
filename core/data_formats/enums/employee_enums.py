@@ -1,9 +1,11 @@
 from enum import Enum
 
 class EmployeeRoleEnums(str,Enum):
-    USER='USER'
-    ADMIN='ADMIN'
+    OWNER='OWNER'
     SUPER_ADMIN='SUPER_ADMIN'
+    ADMIN='ADMIN'
+    BILLER='BILLER'
+    USER='USER'
 
 class EmployeeDepartmentEnums(str,Enum):
     SALES="SALES"

@@ -1,7 +1,7 @@
 from infras.primary_db.services.shop_service import ShopService
 from sqlalchemy.ext.asyncio import AsyncSession
 from schemas.v1.response_schemas.msgqueue_schemas.shop_schemas import ShopUpdateResponseSchema,ShopCreateResponseSchema,ShopDeleteResponseSchema,ShopBusinessInfoTypDict,ShopGetResponseSchema
-from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByAccountIdSchema,GetShopByIdSchema,VerifyShoSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema,VerifyShoSchema
 from typing import Union,List,Optional
 from infras.primary_db.main import AsyncShopEmployeeLocalSession
 
@@ -41,17 +41,14 @@ class MessagingQueueShopService:
             
             return ShopGetResponseSchema(**res).model_dump(mode="json")
     
-    async def get_shop_by_account_id(self,data:Union[GetShopByAccountIdSchema,dict]):
+    async def get_shop_by_user_id(self,data:Union[GetShopByUserIdSchema,dict]):
         if isinstance(data, dict):
-            data = GetShopByAccountIdSchema(**data)
+            data = GetShopByUserIdSchema(**data)
         async with AsyncShopEmployeeLocalSession() as session:
             shop_service_obj=ShopService(session=session)
-            res=await shop_service_obj.getby_accountid(data=data)
+            res=await shop_service_obj.getby_userid(data=data)
 
             if not res:
                 return res
             
             return [ShopGetResponseSchema(**r).model_dump(mode="json") for r in res]
-
-
-    

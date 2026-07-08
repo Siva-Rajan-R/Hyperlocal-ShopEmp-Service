@@ -1,8 +1,8 @@
 from ..repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
-from .employee_service import EmployeeRepo
+from .employee_service import EmployeeService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
-from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByAccountIdSchema,VerifyShoSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByUserIdSchema,VerifyShoSchema
 from models.service_models.base_service_model import BaseServiceModel
 from core.decorators.error_handler_dec import catch_errors
 from ..models.employee_model import Employees
@@ -20,29 +20,29 @@ class ShopService(BaseServiceModel):
         self.shop_repo_obj=ShopRepo(session=session)
 
 
-    async def create(self, data:CreateShopSchema,account_id:str)-> dict | None:
+    async def create(self, data:CreateShopSchema, user_id:str)-> dict | None:
         shop_id:str=generate_uuid()
         data_toadd=CreateShopDbSchema(
             **data.model_dump(mode="json"),
             id=shop_id,
-            account_id=account_id
+            user_id=user_id
         )
 
         res=await self.shop_repo_obj.create(data=data_toadd)
         return res
         
     
-    async def update(self, data:UpdateShopSchema,account_id:str)-> dict | None:
+    async def update(self, data:UpdateShopSchema, user_id:str)-> dict | None:
         ic("Update service started")
-        data_toupdate=UpdateShopDbSchema(**data.model_dump(mode="json",exclude_unset=True,exclude_none=True),is_verified=False,account_id=account_id)
+        data_toupdate=UpdateShopDbSchema(**data.model_dump(mode="json",exclude_unset=True,exclude_none=True), user_id=user_id)
         ic(data_toupdate)
         res=await self.shop_repo_obj.update(data=data_toupdate)
         return res
     
-    async def delete(self,data:DeleteShopSchema,account_id:str)-> dict | None:
+    async def delete(self,data:DeleteShopSchema, user_id:str)-> dict | None:
         data_todel=DeleteShopDbSchema(
             **data.model_dump(mode="json"),
-            account_id=account_id
+            user_id=user_id
         )
         res=await self.shop_repo_obj.delete(data=data_todel)
         return res
@@ -58,8 +58,8 @@ class ShopService(BaseServiceModel):
         return res
     
     
-    async def getby_accountid(self,data:GetShopByAccountIdSchema)-> List[dict] | list:
-        res=await self.shop_repo_obj.getby_accountid(data=data)
+    async def getby_userid(self,data:GetShopByUserIdSchema)-> List[dict] | list:
+        res=await self.shop_repo_obj.getby_userid(data=data)
         return res
     
     async def verify_shop(self,data:VerifyShoSchema)-> bool:
@@ -69,6 +69,4 @@ class ShopService(BaseServiceModel):
 
     async def search(self, data:GetAllShopsSchema):
         res=await self.shop_repo_obj.search(data=data)
-
         return res
-

@@ -6,8 +6,8 @@ from datetime import datetime
 
 class ShopCreateResponseSchema(BaseModel):
     id:str
+    user_id:str
     name:str
-    account_id:str
     category:str
     address:ShopAddressTypDict
     business_infos:ShopBusinessInfoTypDict
@@ -18,7 +18,7 @@ class ShopCreateResponseSchema(BaseModel):
 
 class ShopUpdateResponseSchema(BaseModel):
     id:str
-    account_id:str
+    user_id:str
     name:str
     category:str
     business_infos:ShopBusinessInfoTypDict
@@ -30,7 +30,7 @@ class ShopUpdateResponseSchema(BaseModel):
 
 class ShopDeleteResponseSchema(BaseModel):
     id:str
-    account_id:str
+    user_id:str
     name:str
     category:str
     business_infos:ShopBusinessInfoTypDict
@@ -42,7 +42,7 @@ class ShopDeleteResponseSchema(BaseModel):
 
 class ShopGetResponseSchema(BaseModel):
     id:str
-    account_id:str
+    user_id:str
     name:str
     category:str
     business_infos:ShopBusinessInfoTypDict

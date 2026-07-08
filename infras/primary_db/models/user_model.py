@@ -4,18 +4,13 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-class Employees(BASE):
-    __tablename__="employees"
+class Users(BASE):
+    __tablename__="users"
     id=Column(String,primary_key=True)
-    shop_id=Column(String,nullable=False)
-    ui_id=Column(String,nullable=False,index=True)
     sequence_id=Column(BigInteger,Identity(always=True),nullable=False)
-    user_id=Column(String,nullable=False,index=True)
-    role=Column(String,nullable=False)
-    joined_date=Column(TIMESTAMP,nullable=False)
-    department=Column(String,nullable=False)
-    accepted=Column(Boolean,nullable=False)
-    added_by=Column(String,nullable=False)
+    name=Column(String,nullable=False)
+    mobile_number=Column(String,nullable=True)
+    email=Column(String,nullable=False,unique=True)
     additional_infos=Column(JSONB,nullable=False)
     
 

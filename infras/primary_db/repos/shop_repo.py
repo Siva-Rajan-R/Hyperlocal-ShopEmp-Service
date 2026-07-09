@@ -1,8 +1,11 @@
-from ..models.shop_model import Shops
+from ..models.shop_model import Shops, ShopOperatingHours, ShopDelivery, ShopAnnouncements
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from sqlalchemy.dialects.postgresql import insert
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
 from schemas.v1.request_schemas.shop_schemas import GetAllShopsSchema,GetShopByIdSchema,GetShopByUserIdSchema,VerifyShoSchema
+from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
+from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, UpdateDeliverySchema
+from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
 from models.repo_models.base_repo_model import BaseRepoModel
 from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_transaction
 from core.decorators.error_handler_dec import catch_errors
@@ -19,7 +22,8 @@ def _map_shop(row) -> Optional[dict]:
         return None
     d = dict(row)
     # Map model to schema fields
-    d['category'] = d.pop('categories', '')
+    cats = d.pop('categories', [])
+    d['category'] = cats[0] if cats else ''
     d['datas'] = d.pop('additional_infos', {}) or {}
     d['image_urls'] = []
     return d
@@ -40,10 +44,12 @@ class ShopRepo(BaseRepoModel):
             Shops.banner_url,
             Shops.logo_url,
             Shops.additional_infos,
+            Shops.visible_online,
             Shops.updated_at,
             Shops.created_at,
             Shops.ui_id
         )
+
 
     async def is_shop_exists(self,user_or_shop_id:str):
         # Checks if shop exists by shop_id or by user_id
@@ -84,6 +90,8 @@ class ShopRepo(BaseRepoModel):
             data_toupdate['additional_infos'] = data_toupdate.pop('datas')
         if 'image_urls' in data_toupdate:
             data_toupdate.pop('image_urls')
+
+
 
         shop_toupdate=(
             update(Shops)
@@ -215,3 +223,209 @@ class ShopRepo(BaseRepoModel):
 
         shop=(await self.session.execute(shop_stmt)).mappings().all()
         return shop
+
+    # --- Operating Hours CRUD ---
+    @start_db_transaction
+    async def add_operating_hours(self, shop_id: str, data: CreateOperatingHoursSchema) -> dict | None:
+        values = data.model_dump()
+        values["shop_id"] = shop_id
+        stmt = insert(ShopOperatingHours).values(**values).returning(
+            ShopOperatingHours.id,
+            ShopOperatingHours.shop_id,
+            ShopOperatingHours.open_at,
+            ShopOperatingHours.close_at,
+            ShopOperatingHours.day
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    async def get_operating_hours(self, shop_id: str) -> List[dict]:
+        stmt = select(
+            ShopOperatingHours.id,
+            ShopOperatingHours.shop_id,
+            ShopOperatingHours.open_at,
+            ShopOperatingHours.close_at,
+            ShopOperatingHours.day
+        ).where(ShopOperatingHours.shop_id == shop_id)
+        res = (await self.session.execute(stmt)).mappings().all()
+        return res
+
+    @start_db_transaction
+    async def update_operating_hours(self, hours_id: int, data: UpdateOperatingHoursSchema) -> dict | None:
+        values = data.model_dump(exclude={"id"}, exclude_unset=True, exclude_none=True)
+        stmt = update(ShopOperatingHours).where(ShopOperatingHours.id == hours_id).values(**values).returning(
+            ShopOperatingHours.id,
+            ShopOperatingHours.shop_id,
+            ShopOperatingHours.open_at,
+            ShopOperatingHours.close_at,
+            ShopOperatingHours.day
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    @start_db_transaction
+    async def delete_operating_hours(self, hours_id: int) -> dict | None:
+        stmt = delete(ShopOperatingHours).where(ShopOperatingHours.id == hours_id).returning(
+            ShopOperatingHours.id,
+            ShopOperatingHours.shop_id,
+            ShopOperatingHours.open_at,
+            ShopOperatingHours.close_at,
+            ShopOperatingHours.day
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    # --- Delivery Options CRUD ---
+    @start_db_transaction
+    async def add_delivery_options(self, shop_id: str, data: CreateDeliverySchema) -> dict | None:
+        values = data.model_dump()
+        values["shop_id"] = shop_id
+        stmt = insert(ShopDelivery).values(**values).returning(
+            ShopDelivery.id,
+            ShopDelivery.shop_id,
+            ShopDelivery.type,
+            ShopDelivery.speed,
+            ShopDelivery.free_shipping_amount,
+            ShopDelivery.delivery_by
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    async def get_delivery_options(self, shop_id: str) -> List[dict]:
+        stmt = select(
+            ShopDelivery.id,
+            ShopDelivery.shop_id,
+            ShopDelivery.type,
+            ShopDelivery.speed,
+            ShopDelivery.free_shipping_amount,
+            ShopDelivery.delivery_by
+        ).where(ShopDelivery.shop_id == shop_id)
+        res = (await self.session.execute(stmt)).mappings().all()
+        return res
+
+    @start_db_transaction
+    async def update_delivery_options(self, delivery_id: int, data: UpdateDeliverySchema) -> dict | None:
+        values = data.model_dump(exclude={"id"}, exclude_unset=True, exclude_none=True)
+        stmt = update(ShopDelivery).where(ShopDelivery.id == delivery_id).values(**values).returning(
+            ShopDelivery.id,
+            ShopDelivery.shop_id,
+            ShopDelivery.type,
+            ShopDelivery.speed,
+            ShopDelivery.free_shipping_amount,
+            ShopDelivery.delivery_by
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    @start_db_transaction
+    async def delete_delivery_options(self, delivery_id: int) -> dict | None:
+        stmt = delete(ShopDelivery).where(ShopDelivery.id == delivery_id).returning(
+            ShopDelivery.id,
+            ShopDelivery.shop_id,
+            ShopDelivery.type,
+            ShopDelivery.speed,
+            ShopDelivery.free_shipping_amount,
+            ShopDelivery.delivery_by
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    # --- Announcements CRUD ---
+    @start_db_transaction
+    async def add_announcement(self, shop_id: str, data: CreateAnnouncementSchema) -> dict | None:
+        values = data.model_dump()
+        values["shop_id"] = shop_id
+        stmt = insert(ShopAnnouncements).values(**values).returning(
+            ShopAnnouncements.id,
+            ShopAnnouncements.shop_id,
+            ShopAnnouncements.type,
+            ShopAnnouncements.message,
+            ShopAnnouncements.call_to_action,
+            ShopAnnouncements.schedule_at,
+            ShopAnnouncements.expire_at,
+            ShopAnnouncements.send_to,
+            ShopAnnouncements.status,
+            ShopAnnouncements.created_at,
+            ShopAnnouncements.updated_at
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    async def get_announcements(self, shop_id: str) -> List[dict]:
+        stmt = select(
+            ShopAnnouncements.id,
+            ShopAnnouncements.shop_id,
+            ShopAnnouncements.type,
+            ShopAnnouncements.message,
+            ShopAnnouncements.call_to_action,
+            ShopAnnouncements.schedule_at,
+            ShopAnnouncements.expire_at,
+            ShopAnnouncements.send_to,
+            ShopAnnouncements.status,
+            ShopAnnouncements.created_at,
+            ShopAnnouncements.updated_at
+        ).where(ShopAnnouncements.shop_id == shop_id)
+        res = (await self.session.execute(stmt)).mappings().all()
+        return res
+
+    @start_db_transaction
+    async def update_announcement(self, announcement_id: int, data: UpdateAnnouncementSchema) -> dict | None:
+        values = data.model_dump(exclude={"id"}, exclude_unset=True, exclude_none=True)
+        stmt = update(ShopAnnouncements).where(ShopAnnouncements.id == announcement_id).values(**values).returning(
+            ShopAnnouncements.id,
+            ShopAnnouncements.shop_id,
+            ShopAnnouncements.type,
+            ShopAnnouncements.message,
+            ShopAnnouncements.call_to_action,
+            ShopAnnouncements.schedule_at,
+            ShopAnnouncements.expire_at,
+            ShopAnnouncements.send_to,
+            ShopAnnouncements.status,
+            ShopAnnouncements.created_at,
+            ShopAnnouncements.updated_at
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+
+    @start_db_transaction
+    async def delete_announcement(self, announcement_id: int) -> dict | None:
+        stmt = delete(ShopAnnouncements).where(ShopAnnouncements.id == announcement_id).returning(
+            ShopAnnouncements.id,
+            ShopAnnouncements.shop_id,
+            ShopAnnouncements.type,
+            ShopAnnouncements.message,
+            ShopAnnouncements.call_to_action,
+            ShopAnnouncements.schedule_at,
+            ShopAnnouncements.expire_at,
+            ShopAnnouncements.send_to,
+            ShopAnnouncements.status,
+            ShopAnnouncements.created_at,
+            ShopAnnouncements.updated_at
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return res
+
+    # --- Validation Helpers ---
+    async def count_operating_hours(self, shop_id: str) -> int:
+        stmt = select(func.count(ShopOperatingHours.id)).where(ShopOperatingHours.shop_id == shop_id)
+        return (await self.session.execute(stmt)).scalar() or 0
+
+    async def count_delivery_options(self, shop_id: str) -> int:
+        stmt = select(func.count(ShopDelivery.id)).where(ShopDelivery.shop_id == shop_id)
+        return (await self.session.execute(stmt)).scalar() or 0
+
+    async def is_shop_visible_online(self, shop_id: str) -> bool:
+        stmt = select(Shops.visible_online).where(Shops.id == shop_id)
+        res = (await self.session.execute(stmt)).scalar_one_or_none()
+        return bool(res)
+
+    async def get_shop_id_by_operating_hours_id(self, hours_id: int) -> str | None:
+        stmt = select(ShopOperatingHours.shop_id).where(ShopOperatingHours.id == hours_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    async def get_shop_id_by_delivery_id(self, delivery_id: int) -> str | None:
+        stmt = select(ShopDelivery.shop_id).where(ShopDelivery.id == delivery_id)
+        return (await self.session.execute(stmt)).scalar_one_or_none()
+
+

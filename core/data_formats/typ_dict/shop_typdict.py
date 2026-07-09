@@ -10,9 +10,12 @@ class ShopAddressTypDict(TypedDict):
     latitude:float
     longitude:float
 
+class ShopBusinessGstInfos(TypedDict):
+    registered:bool
+    number:Optional[str]=None
+
+
 class ShopBusinessInfoTypDict(TypedDict):
     type:ShopBusinessTypeEnums
-    gst_no:Optional[str]=None
-    opening_time:time
-    closing_time:time
+    gst_infos:ShopBusinessGstInfos
     currency:ShopBusinessCurrencyEnums

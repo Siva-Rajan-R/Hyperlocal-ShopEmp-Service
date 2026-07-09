@@ -12,4 +12,5 @@ pydantic-settings
 aio-pika
 httpx
 motor
+arq
 git+https://github.com/Siva-Rajan-R/hyperlocal_platform

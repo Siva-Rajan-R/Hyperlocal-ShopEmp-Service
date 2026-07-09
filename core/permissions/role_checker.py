@@ -51,6 +51,23 @@ def require_permission(action: str):
         user_id = x_user_id
         shop_id = x_shop_id
 
+        # Check for JWT Access Token in Authorization header
+        authorization: Optional[str] = request.headers.get("Authorization")
+        token_role = None
+        if authorization and authorization.startswith("Bearer "):
+            token = authorization.split(" ")[1]
+            try:
+                import jwt
+                import os
+                ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET", "access_secret_key_12345")
+                payload = jwt.decode(token, ACCESS_TOKEN_SECRET, algorithms=["HS256"])
+                if payload.get("token_type") == "access":
+                    user_id = payload.get("user_id")
+                    shop_id = payload.get("shop_id")
+                    token_role = payload.get("role")
+            except Exception as e:
+                raise HTTPException(status_code=401, detail=f"Invalid or expired access token: {e}")
+
         # Fallback to path params if headers are missing
         path_params = request.path_params
         if not shop_id and "shop_id" in path_params:
@@ -71,18 +88,21 @@ def require_permission(action: str):
 
         if not user_id or not shop_id:
             raise HTTPException(status_code=401, detail="X-User-Id and X-Shop-Id headers (or equivalent params) are required")
-        role="owner"
-        if action=="create_shop":
+        
+        role = token_role
+        if not role:
             role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)
-            ic(role)
-            if not role:
-                raise HTTPException(status_code=403, detail="Access denied: Not an authorized employee/owner of this shop")
+        
+        ic(role)
+        if not role:
+            raise HTTPException(status_code=403, detail="Access denied: Not an authorized employee/owner of this shop")
 
-            allowed_actions = ROLE_PERMISSIONS.get(role, set())
-            if action not in allowed_actions:
-                raise HTTPException(status_code=403, detail=f"Access denied: Role '{role}' does not have '{action}' permission")
+        allowed_actions = ROLE_PERMISSIONS.get(role, set())
+        if action not in allowed_actions:
+            raise HTTPException(status_code=403, detail=f"Access denied: Role '{role}' does not have '{action}' permission")
 
         ic({"user_id": user_id, "shop_id": shop_id, "role": role})
         return {"user_id": user_id, "shop_id": shop_id, "role": role}
+
 
     return dependency

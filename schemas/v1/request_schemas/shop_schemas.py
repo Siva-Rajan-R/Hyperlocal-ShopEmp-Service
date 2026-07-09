@@ -3,6 +3,8 @@ from core.data_formats.typ_dict.shop_typdict import ShopAddressTypDict,ShopBusin
 from core.data_formats.enums.shop_enums import ShopTypeEnum
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from typing import Optional,Dict,Any,List
+from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema
+from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema
 
 # Optional Fields
 class ShopOptionalFieldsSchemas(BaseModel):
@@ -23,6 +25,9 @@ class CreateShopSchema(BaseModel):
     logo_url:Optional[str]=None
     banner_url:Optional[str]=None
     additional_infos:Optional[ShopOptionalFieldsSchemas]={}
+    visible_online:Optional[bool]=False
+    operating_hours:Optional[List[CreateOperatingHoursSchema]]=None
+    delivery_options:Optional[List[CreateDeliverySchema]]=None
 
 
 class UpdateShopSchema(BaseModel):
@@ -33,6 +38,11 @@ class UpdateShopSchema(BaseModel):
     address:Optional[ShopAddressTypDict]=None
     image_urls:Optional[list]=None
     datas:Optional[ShopOptionalFieldsSchemas]=None
+    visible_online:Optional[bool]=None
+    operating_hours:Optional[List[CreateOperatingHoursSchema]]=None
+    delivery_options:Optional[List[CreateDeliverySchema]]=None
+
+
 
 
 class DeleteShopSchema(BaseModel):

@@ -17,6 +17,7 @@ class CreateShopDbSchema(BaseModel):
     logo_url:Optional[str]=None
     banner_url:Optional[str]=None
     additional_infos:Optional[ShopOptionalFieldsSchemas]={}
+    visible_online:bool = False
 
 
 class UpdateShopDbSchema(BaseModel):
@@ -28,6 +29,8 @@ class UpdateShopDbSchema(BaseModel):
     business_infos:Optional[ShopBusinessInfoTypDict]=None
     image_urls:Optional[list]=[]
     datas:Optional[dict]={}
+    visible_online:Optional[bool]=None
+
 
 class DeleteShopDbSchema(BaseModel):
     shop_id:str

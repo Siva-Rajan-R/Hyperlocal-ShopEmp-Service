@@ -3,7 +3,13 @@ from sqlalchemy import select,update,delete,or_,and_,func,String
 from infras.primary_db.services.shop_service import ShopService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema
 from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema
-from schemas.v1.response_schemas.user_schemas.shop_schemas import ShopCreateResponseSchema,ShopUpdateResponseSchema,ShopDeleteResponseSchema,ShopGetResponseSchema
+from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
+from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, UpdateDeliverySchema
+from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
+from schemas.v1.response_schemas.user_schemas.shop_schemas import (
+    ShopCreateResponseSchema, ShopUpdateResponseSchema, ShopDeleteResponseSchema, ShopGetResponseSchema,
+    OperatingHoursResponseSchema, DeliveryResponseSchema, AnnouncementResponseSchema
+)
 from models.service_models.base_service_model import BaseServiceModel
 from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_transaction
 from core.decorators.error_handler_dec import catch_errors
@@ -13,8 +19,9 @@ from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
-from typing import Optional
+from typing import Optional, List
 from icecream import ic
+
 
 class HandleShopRequest:
     def __init__(self, session:AsyncSession):
@@ -123,3 +130,157 @@ class HandleShopRequest:
             ),
             data=res
         )
+
+    # --- Operating Hours Handlers ---
+    async def add_operating_hours(self, shop_id: str, data: CreateOperatingHoursSchema):
+        res = await ShopService(session=self.session).add_operating_hours(shop_id=shop_id, data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Operating hours added successfully",
+                    success=True,
+                    status_code=201
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=400, detail="Failed to add operating hours")
+
+    async def get_operating_hours(self, shop_id: str):
+        res = await ShopService(session=self.session).get_operating_hours(shop_id=shop_id)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Operating hours fetched successfully",
+                success=True,
+                status_code=200
+            ),
+            data=res
+        )
+
+    async def update_operating_hours(self, hours_id: int, data: UpdateOperatingHoursSchema):
+        res = await ShopService(session=self.session).update_operating_hours(hours_id=hours_id, data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Operating hours updated successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=404, detail="Operating hours not found or failed to update")
+
+    async def delete_operating_hours(self, hours_id: int):
+        res = await ShopService(session=self.session).delete_operating_hours(hours_id=hours_id)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Operating hours deleted successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=404, detail="Operating hours not found or failed to delete")
+
+    # --- Delivery Handlers ---
+    async def add_delivery_options(self, shop_id: str, data: CreateDeliverySchema):
+        res = await ShopService(session=self.session).add_delivery_options(shop_id=shop_id, data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Delivery options added successfully",
+                    success=True,
+                    status_code=201
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=400, detail="Failed to add delivery options")
+
+    async def get_delivery_options(self, shop_id: str):
+        res = await ShopService(session=self.session).get_delivery_options(shop_id=shop_id)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Delivery options fetched successfully",
+                success=True,
+                status_code=200
+            ),
+            data=res
+        )
+
+    async def update_delivery_options(self, delivery_id: int, data: UpdateDeliverySchema):
+        res = await ShopService(session=self.session).update_delivery_options(delivery_id=delivery_id, data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Delivery options updated successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=404, detail="Delivery options not found or failed to update")
+
+    async def delete_delivery_options(self, delivery_id: int):
+        res = await ShopService(session=self.session).delete_delivery_options(delivery_id=delivery_id)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Delivery options deleted successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=404, detail="Delivery options not found or failed to delete")
+
+    # --- Announcement Handlers ---
+    async def add_announcement(self, shop_id: str, data: CreateAnnouncementSchema):
+        res = await ShopService(session=self.session).add_announcement(shop_id=shop_id, data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Announcement added successfully",
+                    success=True,
+                    status_code=201
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=400, detail="Failed to add announcement")
+
+    async def get_announcements(self, shop_id: str):
+        res = await ShopService(session=self.session).get_announcements(shop_id=shop_id)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Announcements fetched successfully",
+                success=True,
+                status_code=200
+            ),
+            data=res
+        )
+
+    async def update_announcement(self, announcement_id: int, data: UpdateAnnouncementSchema):
+        res = await ShopService(session=self.session).update_announcement(announcement_id=announcement_id, data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Announcement updated successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=404, detail="Announcement not found or failed to update")
+
+    async def delete_announcement(self, announcement_id: int):
+        res = await ShopService(session=self.session).delete_announcement(announcement_id=announcement_id)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Announcement deleted successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=404, detail="Announcement not found or failed to delete")
+

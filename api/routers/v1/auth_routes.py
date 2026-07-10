@@ -6,6 +6,9 @@ from typing import Annotated
 from integrations.debuth_service import get_loggedin_user,get_login_urls
 from infras.primary_db.services.user_service import UserService
 from icecream import ic
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 router = APIRouter(
     tags=['Auth'],
@@ -35,7 +38,7 @@ async def verify_employee(
     session: PG_ASYNC_SESSION,
     token: str = Query(...)
 ):
-    import os
+    
     frontend_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
     try:
         res = await HandleAuthRequest(session=session).verify_employee(token=token)

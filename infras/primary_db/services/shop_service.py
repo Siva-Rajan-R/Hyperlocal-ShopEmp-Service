@@ -49,6 +49,46 @@ class ShopService(BaseServiceModel):
             if data.delivery_options:
                 for deliv in data.delivery_options:
                     await self.shop_repo_obj.add_delivery_options(shop_id=shop_id, data=deliv)
+            
+            # Emit "Shop Created" event to RabbitMQ
+            try:
+                from messaging.main import RabbitMQMessagingConfig
+                from aio_pika import ExchangeType
+                rabbitmq_msg_obj = RabbitMQMessagingConfig()
+                await rabbitmq_msg_obj.create_exchange(name="activity_logs.exchange", exchange_type=ExchangeType.TOPIC)
+                
+                payload = {
+                    "shop_id": shop_id,
+                    "user_name": "system",
+                    "service": "Shop",
+                    "action": "CREATE",
+                    "entity_type": "Shop",
+                    "entity_id": shop_id,
+                    "description": f"Created new shop: {data.name}",
+                    "changes": []
+                }
+                
+                headers = {
+                    "routing_key": "utility.service.routing.key",
+                    "exchange_name": "utility.service.exchange",
+                    "entity_name": "init_defaults",
+                    "service_name": "UTILITY",
+                    "saga_id": "None",
+                    "reply_key": "None",
+                    "reply_exchange": "None",
+                    "reply_entity_name": "None",
+                    "body": payload
+                }
+                
+                await rabbitmq_msg_obj.publish_event(
+                    routing_key="utility.service.routing.key",
+                    exchange_name="utility.service.exchange",
+                    payload=payload,
+                    headers=headers
+                )
+            except Exception as msg_err:
+                ic(f"Failed to publish shop created event: {msg_err}")
+
             return res_dict
         return res
         

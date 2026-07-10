@@ -1,7 +1,7 @@
 from fastapi import APIRouter,Depends,Query
 from infras.primary_db.main import get_pg_async_session,AsyncSession
 from typing import Annotated, List, Optional
-from ...handlers.employee import HandleEmployeeRequest,CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,SendVerifyEmployeeSchema
+from ...handlers.employee import HandleEmployeeRequest,CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,SendVerifyEmployeeSchema,VerifyEmployeeTokenSchema
 from core.permissions.role_checker import require_permission
 
 router=APIRouter(
@@ -28,8 +28,27 @@ async def update(
 ):
     return await HandleEmployeeRequest(session=session).update(data=data)
 
+@router.get('/verify/token')
+async def verify_token_redirect(session:PG_ASYNC_SESSION, token: str = Query(...)):
+    from fastapi.responses import RedirectResponse
+    import os
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+    try:
+        res = await HandleEmployeeRequest(session=session).verify_token(data=VerifyEmployeeTokenSchema(token=token))
+        payload = res.get("data", {}) if isinstance(res, dict) else {}
+        return RedirectResponse(
+            url=f"{frontend_url}/employee/verify?status=success&employee_id={payload.get('employee_id', '')}&shop_id={payload.get('shop_id', '')}",
+            status_code=302
+        )
+    except Exception:
+        return RedirectResponse(url=f"{frontend_url}/employee/verify?status=failed", status_code=302)
+
 @router.post('/verify/token')
-async def verify_token(session:PG_ASYNC_SESSION,data:SendVerifyEmployeeSchema):
+async def verify_token(session:PG_ASYNC_SESSION,data:VerifyEmployeeTokenSchema):
+    return await HandleEmployeeRequest(session=session).verify_token(data=data)
+
+@router.post('/verify/resend')
+async def resend_verify_token(session:PG_ASYNC_SESSION,data:SendVerifyEmployeeSchema):
     return await HandleEmployeeRequest(session=session).send_verify(data=data)
 
 @router.delete('/{shop_id}/{id}')

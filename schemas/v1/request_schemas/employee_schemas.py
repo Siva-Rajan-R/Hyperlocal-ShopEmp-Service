@@ -37,6 +37,9 @@ class SendVerifyEmployeeSchema(BaseModel):
     id:str
     shop_id:str
 
+class VerifyEmployeeTokenSchema(BaseModel):
+    token:str
+
 
 class DeleteEmployeeSchema(BaseModel):
     id:str
@@ -76,5 +79,3 @@ class VerifyEmployeeSchema(BaseModel):
     employee_id:Optional[str]=None
     email:Optional[EmailStr]=None
     mobile_number:Optional[str]=None
-
-

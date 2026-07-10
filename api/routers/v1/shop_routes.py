@@ -55,6 +55,7 @@ async def get_my_shops(
     session_id: str = Query(None),
     x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
 ):
+    ic("Received get_my_shops request", session_id, x_session_id)
     sess_id = session_id or x_session_id
     if not sess_id:
         from fastapi import HTTPException

@@ -6,14 +6,14 @@ from icecream import ic
 from core.configs.settings_config import SETTINGS
 from hyperlocal_platform.core.enums.environment_enum import EnvironmentEnum
 
-SMTP_HOST = os.getenv("SMTP_HOST", "mail.privateemail.com")
-SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "dauth@debuggerstechnologies.com")
-SMTP_PASS = os.getenv("SMTP_PASS", "KSXm-ScmK-kaP4-JPh3-BnY5-VNgi")
-FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:8000")
+SMTP_HOST = os.getenv("SMTP_HOST", "")
+SMTP_PORT = int(os.getenv("SMTP_PORT", ""))
+SMTP_USER = os.getenv("SMTP_USER", "")
+SMTP_PASS = os.getenv("SMTP_PASS", "")
+BACKEND_BASE_URL = os.getenv("BACKEND_BASE_URL", "http://127.0.0.1:8900/api")
 
 async def send_verification_email(email: str, name: str, token: str):
-    verification_link = f"{FRONTEND_BASE_URL}/verify-employee?token={token}"
+    verification_link = f"{BACKEND_BASE_URL}/employees/verify/token?token={token}"
     
     subject = "Verify Your Employee Account"
     body = f"""Hi {name},

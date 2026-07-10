@@ -35,8 +35,17 @@ async def verify_employee(
     session: PG_ASYNC_SESSION,
     token: str = Query(...)
 ):
-    return await HandleAuthRequest(session=session).verify_employee(token=token)
-
+    import os
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+    try:
+        res = await HandleAuthRequest(session=session).verify_employee(token=token)
+        payload = res.get("data", {}) if isinstance(res, dict) else {}
+        return RedirectResponse(
+            url=f"{frontend_url}/employee/verify?status=success&employee_id={payload.get('employee_id', '')}&shop_id={payload.get('shop_id', '')}",
+            status_code=302
+        )
+    except Exception:
+        return RedirectResponse(url=f"{frontend_url}/employee/verify?status=failed", status_code=302)
 
 @router.get('/init')
 async def get_login_url():
@@ -79,7 +88,7 @@ async def create_user(session: PG_ASYNC_SESSION, token_id: str = Query(...)):
 
     # 3. Redirect to dashboard sending session_id to frontend
     return RedirectResponse(
-        url=f"http://localhost:5173/dashboard?session_id={session_id}",
+        url=f"http://localhost:5173/dashboard?session_id={session_id}&user_id={user_data['id']}&email={user_email}&name={user_name}",
         status_code=302
     )
 

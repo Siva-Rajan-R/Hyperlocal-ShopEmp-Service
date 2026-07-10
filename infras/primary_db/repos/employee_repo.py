@@ -235,16 +235,23 @@ class EmployeeRepo(BaseRepoModel):
         return [_map_employee(e) for e in employees]
     
     async def verify_employee(self,data:VerifyEmployeeSchema) -> dict | None:
+        conditions = []
+        if data.employee_id:
+            conditions.append(Employees.id == data.employee_id)
+        if data.mobile_number:
+            conditions.append(Users.mobile_number == data.mobile_number)
+        if data.email:
+            conditions.append(Users.email == data.email)
+            
+        if not conditions:
+            return {"id":'','exists':False}
+
         stmt=(
             select(Employees.id)
             .join(Users, Employees.user_id == Users.id)
             .where(
                 Employees.shop_id==data.shop_id,
-                or_(
-                    Employees.id==data.employee_id,
-                    Users.mobile_number==data.mobile_number,
-                    Users.email==data.email
-                )
+                or_(*conditions)
             )
         )
 

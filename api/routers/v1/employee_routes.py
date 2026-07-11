@@ -32,7 +32,7 @@ async def update(
 async def verify_token_redirect(session:PG_ASYNC_SESSION, token: str = Query(...)):
     from fastapi.responses import RedirectResponse
     import os
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://market-place-ismv.vercel.app")
     try:
         res = await HandleEmployeeRequest(session=session).verify_token(data=VerifyEmployeeTokenSchema(token=token))
         payload = res.get("data", {}) if isinstance(res, dict) else {}

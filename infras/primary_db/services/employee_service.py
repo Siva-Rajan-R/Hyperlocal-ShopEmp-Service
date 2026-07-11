@@ -104,38 +104,32 @@ class EmployeeService(BaseServiceModel):
 
     async def update(self, data:UpdateEmployeeSchema) -> dict | None:
         old_employee = await self.employee_repo_obj.getby_id(GetEmployeeByIdSchema(id=data.id, shop_id=data.shop_id))
+        ic(old_employee)
         
         # Merge optional updates into additional_infos
         additional_infos = {}
         if data.datas:
             additional_infos = data.datas.model_dump(exclude_unset=True)
 
-        data_toupdate=UpdateEmployeeDbSchema(
-            id=data.id,
-            shop_id=data.shop_id,
-            role=data.role,
-            joined_date=data.joined_date,
-            department=data.department,
-            additional_infos=additional_infos
-        )
+        data_toupdate=UpdateEmployeeDbSchema(additional_infos=additional_infos,**data.model_dump(mode="json",exclude=['additional_infos'],exclude_none=True,exclude_unset=True))
 
         res=await self.employee_repo_obj.update(data=data_toupdate)
-        if res and old_employee:
-            changes_list = []
-            desc_changes = []
-            dump_data = data.model_dump(exclude_unset=True, exclude_none=True)
-            for k, v in dump_data.items():
-                if k not in ["id", "shop_id"] and k in old_employee and str(old_employee[k]) != str(v):
-                    desc_changes.append(f"{k} prv({old_employee[k]}) after ({v})")
-                    changes_list.append({"field": k, "before": str(old_employee[k]), "after": str(v)})
-            if desc_changes:
-                await _send_activity_log(
-                    shop_id=data.shop_id,
-                    action="UPDATE",
-                    entity_id=data.id,
-                    description=f"Updated employee: {', '.join(desc_changes)}",
-                    changes=changes_list
-                )
+        # if res and old_employee:
+        #     changes_list = []
+        #     desc_changes = []
+        #     dump_data = data.model_dump(exclude_unset=True, exclude_none=True)
+        #     for k, v in dump_data.items():
+        #         if k not in ["id", "shop_id"] and k in old_employee and str(old_employee[k]) != str(v):
+        #             desc_changes.append(f"{k} prv({old_employee[k]}) after ({v})")
+        #             changes_list.append({"field": k, "before": str(old_employee[k]), "after": str(v)})
+        #     if desc_changes:
+        #         await _send_activity_log(
+        #             shop_id=data.shop_id,
+        #             action="UPDATE",
+        #             entity_id=data.id,
+        #             description=f"Updated employee: {', '.join(desc_changes)}",
+        #             changes=changes_list
+        #         )
         return res
 
     async def delete(self,data:DeleteEmployeeSchema)-> dict | None:

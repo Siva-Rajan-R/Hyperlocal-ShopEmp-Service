@@ -30,7 +30,7 @@ class UpdateEmployeeSchema(BaseModel):
     joined_date:Optional[date]=None
     mobile_number:Optional[str]=None
     department:Optional[EmployeeDepartmentEnums]=None
-    datas:Optional[EmployeeOptionalFieldsSchema]={}
+    additional_infos:Optional[EmployeeOptionalFieldsSchema]={}
 
 
 class SendVerifyEmployeeSchema(BaseModel):

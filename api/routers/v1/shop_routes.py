@@ -1,4 +1,4 @@
-from fastapi import APIRouter,Depends,Query,Header
+from fastapi import APIRouter,Depends,Query,Header,File,UploadFile,Form
 from infras.primary_db.main import get_pg_async_session,AsyncSession
 from ...handlers.shop import (
     HandleShopRequest,CreateShopSchema,UpdateShopSchema,DeleteShopSchema,TimeZoneEnum,Optional,
@@ -8,9 +8,35 @@ from ...handlers.shop import (
     CreateAnnouncementSchema, UpdateAnnouncementSchema
 )
 from core.permissions.role_checker import require_permission
-from typing import Annotated
+from typing import Annotated,List,Literal
 from icecream import ic
+from pydantic import BaseModel
+from integrations.utility_service import upload_assets,delete_assets
 
+class UploadImagesSchema(BaseModel):
+    user_id:str
+    shop_id:str
+    image_type:Literal['logo','banner']
+
+    @classmethod
+    def as_form(
+        cls,
+        shop_id:str=Form(...),
+        image_type:Literal['logo','banner']=Form(...),
+        user_id:str=Form(...)
+    ):
+        return cls(
+            shop_id=shop_id,
+            image_type=image_type,
+            user_id=user_id
+        )
+
+
+class DeleteImagesSchema(BaseModel):
+    user_id:str
+    shop_id:str
+    urls:List[str]
+    image_type:Literal['logo','banner']
 
 router=APIRouter(
     tags=['Shop CRUD'],
@@ -47,6 +73,36 @@ async def delete(
     data = DeleteShopSchema(shop_id=shop_id)
     return await HandleShopRequest(session=session).delete(data=data,user_id=auth_data["user_id"])
 
+
+@router.post('/upload/images')
+async def upload_images(session:PG_ASYNC_SESSION,data:Annotated[UploadImagesSchema,Depends(UploadImagesSchema.as_form)],files:List[UploadFile]=File(...)):
+    res=await upload_assets(files=files)
+    ic(res,data.shop_id,data.image_type)
+    
+    url = res.get("data", [None])[0] if isinstance(res, dict) else None
+    ic(url)
+    return await HandleShopRequest(session=session).update(
+        user_id=data.user_id,
+        data=UpdateShopSchema(
+            id=data.shop_id,
+            banner_url=url if data.image_type=="banner" else None,
+            logo_url=url if data.image_type=="logo" else None
+        )
+    )
+
+
+@router.delete('/upload/images')
+async def delete_images(session:PG_ASYNC_SESSION,data:DeleteImagesSchema):
+    deleted=await delete_assets(urls=data.urls)
+    ic(deleted,data.urls,data.shop_id,data.ima)
+    return await HandleShopRequest(session=session).update(
+        user_id=data.user_id,
+        data=UpdateShopSchema(
+            id=data.shop_id,
+            banner_url="" if data.image_type=="banner" else None,
+            logo_url="" if data.image_type=="logo" else None
+        )
+    )
 
 # Read methods
 @router.get('/my-shops')

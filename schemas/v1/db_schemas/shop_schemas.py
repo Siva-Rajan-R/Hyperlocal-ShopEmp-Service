@@ -28,6 +28,8 @@ class UpdateShopDbSchema(BaseModel):
     address:Optional[ShopAddressTypDict]=None
     business_infos:Optional[ShopBusinessInfoTypDict]=None
     image_urls:Optional[list]=[]
+    logo_url:Optional[str]=None
+    banner_url:Optional[str]=None
     datas:Optional[dict]={}
     visible_online:Optional[bool]=None
 

@@ -22,8 +22,6 @@ class CreateShopSchema(BaseModel):
     categories:List[str]
     business_infos:ShopBusinessInfoTypDict
     address:ShopAddressTypDict
-    logo_url:Optional[str]=None
-    banner_url:Optional[str]=None
     additional_infos:Optional[ShopOptionalFieldsSchemas]={}
     visible_online:Optional[bool]=False
     operating_hours:Optional[List[CreateOperatingHoursSchema]]=None
@@ -33,11 +31,12 @@ class CreateShopSchema(BaseModel):
 class UpdateShopSchema(BaseModel):
     id:str
     name:Optional[str]=None
-    category:Optional[str]=None
+    categories:Optional[List[str]]=None
     business_infos:Optional[ShopBusinessInfoTypDict]=None
     address:Optional[ShopAddressTypDict]=None
-    image_urls:Optional[list]=None
-    datas:Optional[ShopOptionalFieldsSchemas]=None
+    logo_url:Optional[str]=None
+    banner_url:Optional[str]=None
+    additional_infos:Optional[ShopOptionalFieldsSchemas]=None
     visible_online:Optional[bool]=None
     operating_hours:Optional[List[CreateOperatingHoursSchema]]=None
     delivery_options:Optional[List[CreateDeliverySchema]]=None

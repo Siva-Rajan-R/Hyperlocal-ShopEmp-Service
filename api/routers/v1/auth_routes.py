@@ -16,6 +16,7 @@ router = APIRouter(
 )
 
 PG_ASYNC_SESSION = Annotated[AsyncSession, Depends(get_pg_async_session)]
+FRONTEND_BASE_URL="https://market-place-ismv.vercel.app"
 
 @router.get('/user-check')
 async def user_check(
@@ -39,7 +40,7 @@ async def verify_employee(
     token: str = Query(...)
 ):
     
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
+    frontend_url = FRONTEND_BASE_URL
     try:
         res = await HandleAuthRequest(session=session).verify_employee(token=token)
         payload = res.get("data", {}) if isinstance(res, dict) else {}
@@ -91,7 +92,7 @@ async def create_user(session: PG_ASYNC_SESSION, token_id: str = Query(...)):
 
     # 3. Redirect to dashboard sending session_id to frontend
     return RedirectResponse(
-        url=f"http://localhost:5173/dashboard?session_id={session_id}&user_id={user_data['id']}&email={user_email}&name={user_name}",
+        url=f"{FRONTEND_BASE_URL}/dashboard?session_id={session_id}&user_id={user_data['id']}&email={user_email}&name={user_name}",
         status_code=302
     )
 

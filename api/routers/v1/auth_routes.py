@@ -5,6 +5,7 @@ from api.handlers.auth import HandleAuthRequest
 from typing import Annotated
 from integrations.debuth_service import get_loggedin_user,get_login_urls
 from infras.primary_db.services.user_service import UserService
+from core.configs.settings_config import SETTINGS
 from icecream import ic
 import os
 from dotenv import load_dotenv
@@ -16,7 +17,8 @@ router = APIRouter(
 )
 
 PG_ASYNC_SESSION = Annotated[AsyncSession, Depends(get_pg_async_session)]
-FRONTEND_BASE_URL="https://market-place-ismv.vercel.app"
+# FRONTEND_BASE_URL="https://market-place-ismv.vercel.app"
+FRONTEND_BASE_URL=SETTINGS.FRONTEND_BASE_URL
 
 @router.get('/user-check')
 async def user_check(

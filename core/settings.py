@@ -11,6 +11,12 @@ class ShopEmployeeSettings(BaseSettings):
     ENVIRONMENT:EnvironmentEnum
     DEB_SECRETS:str
     DEB_APIKEY:str
+    BACKEND_BASE_URL:str
+    FRONTEND_BASE_URL:str
+    SMTP_HOST:str
+    SMTP_PORT:int
+    SMTP_USER:str
+    SMTP_PASS:str
 
     model_config={
         "case_sensitive":False,

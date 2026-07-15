@@ -108,7 +108,7 @@ class EmployeeService(BaseServiceModel):
         
         # Merge optional updates into additional_infos
         additional_infos = {}
-        if data.datas:
+        if data.additional_infos:
             additional_infos = data.datas.model_dump(exclude_unset=True)
 
         data_toupdate=UpdateEmployeeDbSchema(additional_infos=additional_infos,**data.model_dump(mode="json",exclude=['additional_infos'],exclude_none=True,exclude_unset=True))

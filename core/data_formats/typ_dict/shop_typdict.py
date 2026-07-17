@@ -2,6 +2,11 @@ from typing import TypedDict,Optional
 from ..enums.shop_enums import ShopBusinessTypeEnums,ShopBusinessCurrencyEnums
 from datetime import time
 
+try:
+    from typing import NotRequired
+except ImportError:
+    from typing_extensions import NotRequired
+
 
 class ShopAddressTypDict(TypedDict):
     full_address:str
@@ -12,7 +17,7 @@ class ShopAddressTypDict(TypedDict):
 
 class ShopBusinessGstInfos(TypedDict):
     registered:bool
-    number:Optional[str]=None
+    number:NotRequired[Optional[str]]
 
 
 class ShopBusinessInfoTypDict(TypedDict):

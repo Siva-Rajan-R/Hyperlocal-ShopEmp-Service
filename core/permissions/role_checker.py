@@ -43,52 +43,40 @@ async def get_user_role(user_id: str, shop_id: str, session: AsyncSession) -> Op
 def require_permission(action: str):
     async def dependency(
         request: Request,
-        x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-        x_shop_id: Optional[str] = Header(None, alias="X-Shop-Id"),
         session: AsyncSession = Depends(get_pg_async_session)
     ):
-        # Resolve user_id and shop_id
-        user_id = x_user_id
-        shop_id = x_shop_id
-
-        # Check for JWT Access Token in Authorization header
-        authorization: Optional[str] = request.headers.get("Authorization")
+        import json
+        x_user_infos = request.headers.get("X-User-Infos")
+        user_id = None
         token_role = None
-        if authorization and authorization.startswith("Bearer "):
-            token = authorization.split(" ")[1]
-            try:
-                import jwt
-                import os
-                ACCESS_TOKEN_SECRET = os.getenv("ACCESS_TOKEN_SECRET", "access_secret_key_12345")
-                payload = jwt.decode(token, ACCESS_TOKEN_SECRET, algorithms=["HS256"])
-                if payload.get("token_type") == "access":
-                    user_id = payload.get("user_id")
-                    shop_id = payload.get("shop_id")
-                    token_role = payload.get("role")
-            except Exception as e:
-                raise HTTPException(status_code=401, detail=f"Invalid or expired access token: {e}")
 
-        # Fallback to path params if headers are missing
+        if x_user_infos:
+            try:
+                user_data = json.loads(x_user_infos)
+                user_id = user_data.get("user_id")
+                token_role = user_data.get("role")
+            except Exception as e:
+                ic(f"Error parsing X-User-Infos: {e}")
+
+        # Resolve shop_id
+        shop_id = request.headers.get("X-Shop-Id")
         path_params = request.path_params
         if not shop_id and "shop_id" in path_params:
             shop_id = path_params["shop_id"]
         
-        # Fallback to query params
         query_params = request.query_params
-        if not user_id and "user_id" in query_params:
-            user_id = query_params["user_id"]
         if not shop_id and "shop_id" in query_params:
             shop_id = query_params["shop_id"]
 
-        # If it's a create shop request, we only need user_id (everyone can create a shop)
+        if not user_id:
+            raise HTTPException(status_code=401, detail="User identification is required (missing X-User-Infos)")
+
         if action == "create_shop":
-            if not user_id:
-                raise HTTPException(status_code=401, detail="X-User-Id header or user_id query parameter is required")
             return user_id
 
-        if not user_id or not shop_id:
-            raise HTTPException(status_code=401, detail="X-User-Id and X-Shop-Id headers (or equivalent params) are required")
-        
+        if not shop_id:
+            raise HTTPException(status_code=400, detail="Shop identification (X-Shop-Id or query/path param) is required")
+
         role = token_role
         if not role:
             role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)
@@ -103,6 +91,5 @@ def require_permission(action: str):
 
         ic({"user_id": user_id, "shop_id": shop_id, "role": role})
         return {"user_id": user_id, "shop_id": shop_id, "role": role}
-
 
     return dependency

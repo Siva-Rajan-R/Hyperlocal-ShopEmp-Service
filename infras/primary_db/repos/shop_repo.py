@@ -1,4 +1,4 @@
-from ..models.shop_model import Shops, ShopOperatingHours, ShopDelivery, ShopAnnouncements
+from ..models.shop_model import Shops, ShopOperatingHours, ShopDelivery, ShopAnnouncements, ShopFollowers
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from sqlalchemy.dialects.postgresql import insert
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
@@ -369,9 +369,9 @@ class ShopRepo(BaseRepoModel):
         return res
 
     @start_db_transaction
-    async def update_announcement(self, announcement_id: int, data: UpdateAnnouncementSchema) -> dict | None:
+    async def update_announcement(self,data: UpdateAnnouncementSchema,shop_id:str) -> dict | None:
         values = data.model_dump(exclude={"id"}, exclude_unset=True, exclude_none=True)
-        stmt = update(ShopAnnouncements).where(ShopAnnouncements.id == announcement_id).values(**values).returning(
+        stmt = update(ShopAnnouncements).where(ShopAnnouncements.id == data.id,ShopAnnouncements.shop_id == shop_id).values(**values).returning(
             ShopAnnouncements.id,
             ShopAnnouncements.shop_id,
             ShopAnnouncements.type,
@@ -389,8 +389,8 @@ class ShopRepo(BaseRepoModel):
 
 
     @start_db_transaction
-    async def delete_announcement(self, announcement_id: int) -> dict | None:
-        stmt = delete(ShopAnnouncements).where(ShopAnnouncements.id == announcement_id).returning(
+    async def delete_announcement(self, announcement_id: int,shop_id:str) -> dict | None:
+        stmt = delete(ShopAnnouncements).where(ShopAnnouncements.id == announcement_id,ShopAnnouncements.shop_id==shop_id).returning(
             ShopAnnouncements.id,
             ShopAnnouncements.shop_id,
             ShopAnnouncements.type,
@@ -427,5 +427,44 @@ class ShopRepo(BaseRepoModel):
     async def get_shop_id_by_delivery_id(self, delivery_id: int) -> str | None:
         stmt = select(ShopDelivery.shop_id).where(ShopDelivery.id == delivery_id)
         return (await self.session.execute(stmt)).scalar_one_or_none()
+
+    @start_db_transaction
+    async def follow_shop(self, shop_id: str, user_id: str) -> dict | None:
+        check_stmt = select(ShopFollowers).where(
+            and_(ShopFollowers.shop_id == shop_id, ShopFollowers.user_id == user_id)
+        )
+        existing = (await self.session.execute(check_stmt)).scalars().first()
+        if existing:
+            return {"id": existing.id, "shop_id": existing.shop_id, "user_id": existing.user_id}
+        
+        new_follow = ShopFollowers(shop_id=shop_id, user_id=user_id)
+        self.session.add(new_follow)
+        await self.session.flush()
+        return {"id": new_follow.id, "shop_id": new_follow.shop_id, "user_id": new_follow.user_id}
+
+    @start_db_transaction
+    async def unfollow_shop(self, shop_id: str, user_id: str) -> bool:
+        stmt = delete(ShopFollowers).where(
+            and_(ShopFollowers.shop_id == shop_id, ShopFollowers.user_id == user_id)
+        )
+        res = await self.session.execute(stmt)
+        return res.rowcount > 0
+
+    async def get_shop_followers(self, shop_id: str) -> List[str]:
+        stmt = select(ShopFollowers.user_id).where(ShopFollowers.shop_id == shop_id)
+        res = await self.session.execute(stmt)
+        return list(res.scalars().all())
+
+    async def get_user_followed_shops(self, user_id: str) -> List[dict]:
+        stmt = select(
+            Shops.id, Shops.name, Shops.description, Shops.logo_url
+        ).join(
+            ShopFollowers, Shops.id == ShopFollowers.shop_id
+        ).where(
+            ShopFollowers.user_id == user_id
+        )
+        res = await self.session.execute(stmt)
+        return [dict(r) for r in res.mappings().all()]
+
 
 

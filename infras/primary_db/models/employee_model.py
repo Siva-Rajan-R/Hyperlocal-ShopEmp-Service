@@ -11,6 +11,7 @@ class Employees(BASE):
     ui_id=Column(String,nullable=False,index=True)
     sequence_id=Column(BigInteger,Identity(always=True),nullable=False)
     user_id=Column(String,nullable=False,index=True)
+    name=Column(String,nullable=False)
     role=Column(String,nullable=False)
     joined_date=Column(TIMESTAMP,nullable=False)
     department=Column(String,nullable=False)

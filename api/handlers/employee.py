@@ -17,31 +17,31 @@ class HandleEmployeeRequest:
 
     async def create(self,data:CreateEmployeeSchema,user_id:str):
         # Check if the email being added belongs to the shop owner
-        try:
-            from schemas.v1.request_schemas.shop_schemas import GetShopByIdSchema
-            shop_detail = await ShopService(session=self.session).getby_id(GetShopByIdSchema(shop_id=data.shop_id))
-            if shop_detail:
-                owner_user_id = shop_detail.get("user_id")
-                if owner_user_id:
-                    from sqlalchemy import select
-                    from infras.primary_db.models.user_model import Users
-                    owner_stmt = select(Users.email).where(Users.id == owner_user_id)
-                    owner_email = (await self.session.execute(owner_stmt)).scalar_one_or_none()
+        # try:
+            # from schemas.v1.request_schemas.shop_schemas import GetShopByIdSchema
+        #     shop_detail = await ShopService(session=self.session).getby_id(GetShopByIdSchema(shop_id=data.shop_id))
+        #     if shop_detail:
+        #         owner_user_id = shop_detail.get("user_id")
+        #         if owner_user_id:
+        #             from sqlalchemy import select
+        #             from infras.primary_db.models.user_model import Users
+        #             owner_stmt = select(Users.email).where(Users.id == owner_user_id)
+        #             owner_email = (await self.session.execute(owner_stmt)).scalar_one_or_none()
                     
-                    if owner_email and owner_email.strip().lower() == data.email.strip().lower():
-                        raise HTTPException(
-                            status_code=400,
-                            detail=ErrorResponseTypDict(
-                                msg="Error : Creating Employee",
-                                description="Shop owner cannot be added as an employee",
-                                success=False,
-                                status_code=400
-                            )
-                        )
-        except HTTPException:
-            raise
-        except Exception as e:
-            ic(f"Error checking shop owner: {e}")
+        #             if owner_email and owner_email.strip().lower() == data.email.strip().lower():
+        #                 raise HTTPException(
+        #                     status_code=400,
+        #                     detail=ErrorResponseTypDict(
+        #                         msg="Error : Creating Employee",
+        #                         description="Shop owner cannot be added as an employee",
+        #                         success=False,
+        #                         status_code=400
+        #                     )
+        #                 )
+        # except HTTPException:
+        #     raise
+        # except Exception as e:
+        #     ic(f"Error checking shop owner: {e}")
 
         # Check if employee already exists by email in this shop
         is_emp_exists=await EmployeeService(session=self.session).verify_employee(data=VerifyEmployeeSchema(shop_id=data.shop_id,email=data.email))

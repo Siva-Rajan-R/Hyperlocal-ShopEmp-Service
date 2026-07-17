@@ -6,12 +6,11 @@ from models.infra_models.readdb_model import BaseReadDbModel
 
 
 class ReadDbEmployeeService(BaseReadDbModel):
-    def __init__(self,payload:Any,conditions:dict):
-        self.payload=payload
-        self.conditions=conditions
-        self.collection=EMPLOYEES_COLLECTION
-        self.base_Repo_obj=ReadDbBaseRepo(collection=self.collection)
-        # super.__init__(payload,conditions)
+    def __init__(self, payload: Any = None, conditions: Optional[dict] = None):
+        self.payload = payload
+        self.conditions = conditions or {}
+        self.collection = EMPLOYEES_COLLECTION
+        self.base_Repo_obj = ReadDbBaseRepo(collection=self.collection)
 
     
     async def create(self):

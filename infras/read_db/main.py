@@ -6,6 +6,7 @@ from icecream import ic
 MONGO_CLIENT=AsyncIOMotorClient(SETTINGS.MONGO_DB_URL)
 
 
-DB=MONGO_CLIENT["shop_emp_db"]
+DB=MONGO_CLIENT["ShopEmpDb"]
 
-EMPLOYEES_COLLECTION=DB['employees_collection']
+EMPLOYEES_COLLECTION=DB['EmployeesCollection']
+SHOPS_COLLECTION=DB['ShopsCollection']

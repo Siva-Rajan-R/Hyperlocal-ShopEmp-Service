@@ -4,7 +4,7 @@ from typing import Optional
 
 class ReadDbEmployeeCreateModel(BaseModel):
     employee_id:str
-    account_id:str
+    user_id:str
     shop_id:str
     name:str
     email:EmailStr
@@ -12,6 +12,9 @@ class ReadDbEmployeeCreateModel(BaseModel):
     is_accepted:bool
     added_by:str
     role:str
+    joined_date:Optional[str]=None
+    department:Optional[str]=None
+    additional_infos:Optional[dict]=None
 
 class ReadDbEmployeeUpdateModel(BaseModel):
     name:Optional[str]=None
@@ -19,6 +22,9 @@ class ReadDbEmployeeUpdateModel(BaseModel):
     role:Optional[str]=None
     mobile_number:Optional[str]=None
     email:Optional[EmailStr]=None
+    joined_date:Optional[str]=None
+    department:Optional[str]=None
+    additional_infos:Optional[dict]=None
 
 class ReadDbEmployeeReadModel(ReadDbEmployeeCreateModel):
     ...

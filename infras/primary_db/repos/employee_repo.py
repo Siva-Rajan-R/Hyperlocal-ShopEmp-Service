@@ -1,5 +1,4 @@
 from ..models.employee_model import Employees
-from ..models.user_model import Users
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from sqlalchemy.dialects.postgresql import insert
 from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
@@ -17,8 +16,6 @@ def _map_employee(row) -> Optional[dict]:
     if not row:
         return None
     d = dict(row)
-    # Map additional_infos to datas for schema compatibility
-    d['datas'] = d.pop('additional_infos', {}) or {}
     return d
 
 class EmployeeRepo(BaseRepoModel):
@@ -29,6 +26,7 @@ class EmployeeRepo(BaseRepoModel):
             Employees.id,
             Employees.ui_id,
             Employees.user_id,
+            Employees.name,
             Employees.shop_id,
             Employees.role,
             Employees.department,
@@ -37,32 +35,8 @@ class EmployeeRepo(BaseRepoModel):
             Employees.created_at,
             Employees.updated_at,
             Employees.additional_infos,
-            Users.name,
-            Users.email,
-            Users.mobile_number
+            Employees.added_by
         )
-
-    async def is_employee_exists(self, employee_account_id: str, email: Optional[str] = None, mobile_number: Optional[str] = None, shop_id: Optional[str] = None) -> Optional[dict]:
-        # Joined query to check existence
-        stmt = (
-            select(*self.select_cols)
-            .join(Users, Employees.user_id == Users.id)
-        )
-        
-        conditions = []
-        if employee_account_id:
-            conditions.append(or_(Employees.id == employee_account_id, Employees.user_id == employee_account_id))
-        if email:
-            conditions.append(Users.email == email)
-        if mobile_number:
-            conditions.append(Users.mobile_number == mobile_number)
-
-        stmt = stmt.where(or_(*conditions))
-        if shop_id:
-            stmt = stmt.where(Employees.shop_id == shop_id)
-
-        res = (await self.session.execute(stmt.limit(1))).mappings().one_or_none()
-        return _map_employee(res)
 
     @start_db_transaction
     async def get_next_sequence(self, shop_id: str, start_from: int) -> int:
@@ -81,6 +55,7 @@ class EmployeeRepo(BaseRepoModel):
                 Employees.id,
                 Employees.ui_id,
                 Employees.user_id,
+                Employees.name,
                 Employees.shop_id,
                 Employees.role,
                 Employees.department,
@@ -88,7 +63,8 @@ class EmployeeRepo(BaseRepoModel):
                 Employees.joined_date,
                 Employees.created_at,
                 Employees.updated_at,
-                Employees.additional_infos
+                Employees.additional_infos,
+                Employees.added_by
             )
         )
         res=(await self.session.execute(stmt)).mappings().one_or_none()
@@ -97,7 +73,6 @@ class EmployeeRepo(BaseRepoModel):
         if res:
             stmt_join = (
                 select(*self.select_cols)
-                .join(Users, Employees.user_id == Users.id)
                 .where(Employees.id == res.get("id"))
             )
             joined_res = (await self.session.execute(stmt_join)).mappings().one_or_none()
@@ -119,6 +94,7 @@ class EmployeeRepo(BaseRepoModel):
             Employees.id,
             Employees.ui_id,
             Employees.user_id,
+            Employees.name,
             Employees.shop_id,
             Employees.role,
             Employees.department,
@@ -126,14 +102,14 @@ class EmployeeRepo(BaseRepoModel):
             Employees.joined_date,
             Employees.created_at,
             Employees.updated_at,
-            Employees.additional_infos
+            Employees.additional_infos,
+            Employees.added_by
         )
 
         res=(await self.session.execute(employee_toupdate)).mappings().one_or_none()
         if res:
             stmt_join = (
                 select(*self.select_cols)
-                .join(Users, Employees.user_id == Users.id)
                 .where(Employees.id == res.get("id"))
             )
             joined_res = (await self.session.execute(stmt_join)).mappings().one_or_none()
@@ -146,7 +122,6 @@ class EmployeeRepo(BaseRepoModel):
         # Get old data first to return it
         stmt_join = (
             select(*self.select_cols)
-            .join(Users, Employees.user_id == Users.id)
             .where(Employees.id == data.id, Employees.shop_id == data.shop_id)
         )
         joined_res = (await self.session.execute(stmt_join)).mappings().one_or_none()
@@ -169,13 +144,10 @@ class EmployeeRepo(BaseRepoModel):
 
         employee_stmt=(
             select(*self.select_cols, created_at)
-            .join(Users, Employees.user_id == Users.id)
             .where(
                 and_(
                     or_(
                         Employees.id.ilike(search_term),
-                        Users.name.ilike(search_term),
-                        Users.email.ilike(search_term),
                         func.cast(created_at,String).ilike(search_term)
                     ),
                     Employees.sequence_id>cursor
@@ -195,7 +167,6 @@ class EmployeeRepo(BaseRepoModel):
 
         employee_stmt=(
             select(*self.select_cols, created_at)
-            .join(Users, Employees.user_id == Users.id)
             .where(
                 Employees.shop_id==data.shop_id,
                 Employees.id==data.id,
@@ -213,14 +184,11 @@ class EmployeeRepo(BaseRepoModel):
 
         employee_stmt=(
             select(*self.select_cols, created_at)
-            .join(Users, Employees.user_id == Users.id)
             .where(
                 and_(
                     Employees.shop_id==data.shop_id,
                     or_(
                         Employees.id.ilike(search_term),
-                        Users.name.ilike(search_term),
-                        Users.email.ilike(search_term),
                         func.cast(created_at,String).ilike(search_term)
                     ),
                     Employees.sequence_id>cursor
@@ -238,17 +206,12 @@ class EmployeeRepo(BaseRepoModel):
         conditions = []
         if data.employee_id:
             conditions.append(Employees.id == data.employee_id)
-        if data.mobile_number:
-            conditions.append(Users.mobile_number == data.mobile_number)
-        if data.email:
-            conditions.append(Users.email == data.email)
             
         if not conditions:
             return {"id":'','exists':False}
 
         stmt=(
             select(Employees.id)
-            .join(Users, Employees.user_id == Users.id)
             .where(
                 Employees.shop_id==data.shop_id,
                 or_(*conditions)
@@ -272,7 +235,6 @@ class EmployeeRepo(BaseRepoModel):
         
         stmt = (
             select(func.count(Employees.id).label("total_employees"))
-            .join(Users, Employees.user_id == Users.id)
         )
         
         if hasattr(data, 'shop_id') and data.shop_id:
@@ -284,7 +246,6 @@ class EmployeeRepo(BaseRepoModel):
                 or_(
                     Employees.id.ilike(search_term),
                     Employees.ui_id.ilike(search_term),
-                    Users.name.ilike(search_term),
                     func.cast(created_at, String).ilike(search_term)
                 )
             )
@@ -306,3 +267,15 @@ class EmployeeRepo(BaseRepoModel):
         )
         res = await self.session.execute(stmt)
         return res.rowcount > 0
+
+    @start_db_transaction
+    async def is_employee_exists(self, employee_account_id: str, shop_id: str) -> Optional[dict]:
+        stmt = (
+            select(*self.select_cols)
+            .where(
+                Employees.user_id == employee_account_id,
+                Employees.shop_id == shop_id
+            )
+        )
+        res = (await self.session.execute(stmt)).mappings().one_or_none()
+        return _map_employee(res)

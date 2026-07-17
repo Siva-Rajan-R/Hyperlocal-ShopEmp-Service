@@ -9,6 +9,7 @@ class CreateEmployeeDbSchema(BaseModel):
     id:str
     ui_id:str
     user_id:str
+    name:str
     added_by:str
     shop_id:str
     role:EmployeeRoleEnums
@@ -21,6 +22,7 @@ class CreateEmployeeDbSchema(BaseModel):
 class UpdateEmployeeDbSchema(BaseModel):
     id:str
     shop_id:str
+    name:Optional[str]=None
     role:Optional[EmployeeRoleEnums]=None
     joined_date:Optional[date]=None
     department:Optional[EmployeeDepartmentEnums]=None

@@ -5,7 +5,7 @@ from ...handlers.shop import (
     GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema,
     CreateOperatingHoursSchema, UpdateOperatingHoursSchema,
     CreateDeliverySchema, UpdateDeliverySchema,
-    CreateAnnouncementSchema, UpdateAnnouncementSchema
+    CreateAnnouncementSchema, UpdateAnnouncementSchema, ShopFollowerSchema
 )
 from core.permissions.role_checker import require_permission
 from typing import Annotated,List,Literal
@@ -105,35 +105,35 @@ async def delete_images(session:PG_ASYNC_SESSION,data:DeleteImagesSchema):
     )
 
 # Read methods
-@router.get('/my-shops')
-async def get_my_shops(
-    session: PG_ASYNC_SESSION,
-    session_id: str = Query(None),
-    x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
-):
-    ic("Received get_my_shops request", session_id, x_session_id)
-    sess_id = session_id or x_session_id
-    if not sess_id:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=401, detail="Session ID required")
+# @router.get('/my-shops')
+# async def get_my_shops(
+#     session: PG_ASYNC_SESSION,
+#     session_id: str = Query(None),
+#     x_session_id: Optional[str] = Header(None, alias="X-Session-ID")
+# ):
+#     ic("Received get_my_shops request", session_id, x_session_id)
+#     sess_id = session_id or x_session_id
+#     if not sess_id:
+#         from fastapi import HTTPException
+#         raise HTTPException(status_code=401, detail="Session ID required")
     
-    import json
-    import os
-    import redis.asyncio as aioredis
-    from fastapi import HTTPException
+#     import json
+#     import os
+#     import redis.asyncio as aioredis
+#     from fastapi import HTTPException
     
-    redis_url = os.getenv("PLATFORM_REDIS_URL", "redis://localhost:6379")
-    redis_client = aioredis.Redis.from_url(redis_url, decode_responses=True)
+#     redis_url = os.getenv("PLATFORM_REDIS_URL", "redis://localhost:6379")
+#     redis_client = aioredis.Redis.from_url(redis_url, decode_responses=True)
     
-    session_data = await redis_client.get(f"SESSION:{sess_id}")
-    if not session_data:
-        raise HTTPException(status_code=401, detail="Session expired or invalid")
+#     session_data = await redis_client.get(f"SESSION:{sess_id}")
+#     if not session_data:
+#         raise HTTPException(status_code=401, detail="Session expired or invalid")
     
-    sess_info = json.loads(session_data)
-    user_id = sess_info.get("user_id")
+#     sess_info = json.loads(session_data)
+#     user_id = sess_info.get("user_id")
     
-    data = GetShopByUserIdSchema(user_id=user_id)
-    return await HandleShopRequest(session=session).getby_userid(data=data)
+#     data = GetShopByUserIdSchema(user_id=user_id)
+#     return await HandleShopRequest(session=session).getby_userid(data=data)
 
 @router.get('/by/user/{user_id}')
 async def get_by_userid(
@@ -156,73 +156,73 @@ async def get_all(session:PG_ASYNC_SESSION,data:GetAllShopsSchema=Depends()):
 
 
 # --- Operating Hours Routes ---
-@router.post('/{shop_id}/operating-hours')
-async def add_operating_hours(
-    shop_id: str,
-    data: CreateOperatingHoursSchema,
-    session: PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-):
-    return await HandleShopRequest(session=session).add_operating_hours(shop_id=shop_id, data=data)
+# @router.post('/{shop_id}/operating-hours')
+# async def add_operating_hours(
+#     shop_id: str,
+#     data: CreateOperatingHoursSchema,
+#     session: PG_ASYNC_SESSION,
+#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
+# ):
+#     return await HandleShopRequest(session=session).add_operating_hours(shop_id=shop_id, data=data)
 
-@router.get('/{shop_id}/operating-hours')
-async def get_operating_hours(
-    shop_id: str,
-    session: PG_ASYNC_SESSION
-):
-    return await HandleShopRequest(session=session).get_operating_hours(shop_id=shop_id)
+# @router.get('/{shop_id}/operating-hours')
+# async def get_operating_hours(
+#     shop_id: str,
+#     session: PG_ASYNC_SESSION
+# ):
+#     return await HandleShopRequest(session=session).get_operating_hours(shop_id=shop_id)
 
-@router.put('/operating-hours/{hours_id}')
-async def update_operating_hours(
-    hours_id: int,
-    data: UpdateOperatingHoursSchema,
-    session: PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-):
-    return await HandleShopRequest(session=session).update_operating_hours(hours_id=hours_id, data=data)
+# @router.put('/operating-hours/{hours_id}')
+# async def update_operating_hours(
+#     hours_id: int,
+#     data: UpdateOperatingHoursSchema,
+#     session: PG_ASYNC_SESSION,
+#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
+# ):
+#     return await HandleShopRequest(session=session).update_operating_hours(hours_id=hours_id, data=data)
 
-@router.delete('/operating-hours/{hours_id}')
-async def delete_operating_hours(
-    hours_id: int,
-    session: PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-):
-    return await HandleShopRequest(session=session).delete_operating_hours(hours_id=hours_id)
+# @router.delete('/operating-hours/{hours_id}')
+# async def delete_operating_hours(
+#     hours_id: int,
+#     session: PG_ASYNC_SESSION,
+#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
+# ):
+#     return await HandleShopRequest(session=session).delete_operating_hours(hours_id=hours_id)
 
 
-# --- Delivery Routes ---
-@router.post('/{shop_id}/delivery')
-async def add_delivery_options(
-    shop_id: str,
-    data: CreateDeliverySchema,
-    session: PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-):
-    return await HandleShopRequest(session=session).add_delivery_options(shop_id=shop_id, data=data)
+# # --- Delivery Routes ---
+# @router.post('/{shop_id}/delivery')
+# async def add_delivery_options(
+#     shop_id: str,
+#     data: CreateDeliverySchema,
+#     session: PG_ASYNC_SESSION,
+#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
+# ):
+#     return await HandleShopRequest(session=session).add_delivery_options(shop_id=shop_id, data=data)
 
-@router.get('/{shop_id}/delivery')
-async def get_delivery_options(
-    shop_id: str,
-    session: PG_ASYNC_SESSION
-):
-    return await HandleShopRequest(session=session).get_delivery_options(shop_id=shop_id)
+# @router.get('/{shop_id}/delivery')
+# async def get_delivery_options(
+#     shop_id: str,
+#     session: PG_ASYNC_SESSION
+# ):
+#     return await HandleShopRequest(session=session).get_delivery_options(shop_id=shop_id)
 
-@router.put('/delivery/{delivery_id}')
-async def update_delivery_options(
-    delivery_id: int,
-    data: UpdateDeliverySchema,
-    session: PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-):
-    return await HandleShopRequest(session=session).update_delivery_options(delivery_id=delivery_id, data=data)
+# @router.put('/delivery/{delivery_id}')
+# async def update_delivery_options(
+#     delivery_id: int,
+#     data: UpdateDeliverySchema,
+#     session: PG_ASYNC_SESSION,
+#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
+# ):
+#     return await HandleShopRequest(session=session).update_delivery_options(delivery_id=delivery_id, data=data)
 
-@router.delete('/delivery/{delivery_id}')
-async def delete_delivery_options(
-    delivery_id: int,
-    session: PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-):
-    return await HandleShopRequest(session=session).delete_delivery_options(delivery_id=delivery_id)
+# @router.delete('/delivery/{delivery_id}')
+# async def delete_delivery_options(
+#     delivery_id: int,
+#     session: PG_ASYNC_SESSION,
+#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
+# ):
+#     return await HandleShopRequest(session=session).delete_delivery_options(delivery_id=delivery_id)
 
 
 # --- Announcements Routes ---
@@ -242,19 +242,51 @@ async def get_announcements(
 ):
     return await HandleShopRequest(session=session).get_announcements(shop_id=shop_id)
 
-@router.put('/announcements/{announcement_id}')
+@router.put('/{shop_id}/announcements')
 async def update_announcement(
-    announcement_id: int,
+    shop_id:str,
     data: UpdateAnnouncementSchema,
     session: PG_ASYNC_SESSION,
     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
 ):
-    return await HandleShopRequest(session=session).update_announcement(announcement_id=announcement_id, data=data)
+    return await HandleShopRequest(session=session).update_announcement(data=data,shop_id=shop_id)
 
-@router.delete('/announcements/{announcement_id}')
+@router.delete('/{shop_id}/announcements/{announcement_id}')
 async def delete_announcement(
+    shop_id:str,
     announcement_id: int,
     session: PG_ASYNC_SESSION,
     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
 ):
-    return await HandleShopRequest(session=session).delete_announcement(announcement_id=announcement_id)
+    return await HandleShopRequest(session=session).delete_announcement(announcement_id=announcement_id,shop_id=shop_id)
+
+
+# --- Shop Followers Routes ---
+@router.post('/followers')
+async def follow_shop(
+    data: ShopFollowerSchema,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).follow_shop(data=data)
+
+@router.delete('/followers/{shop_id}/{user_id}')
+async def unfollow_shop(
+    shop_id: str,
+    user_id: str,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).unfollow_shop(shop_id=shop_id, user_id=user_id)
+
+@router.get('/followers/shop/{shop_id}')
+async def get_shop_followers(
+    shop_id: str,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).get_shop_followers(shop_id=shop_id)
+
+@router.get('/followers/user/{user_id}')
+async def get_user_followed_shops(
+    user_id: str,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).get_user_followed_shops(user_id=user_id)

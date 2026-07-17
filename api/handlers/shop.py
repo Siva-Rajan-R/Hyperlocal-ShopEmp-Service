@@ -2,7 +2,7 @@ from infras.primary_db.repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from infras.primary_db.services.shop_service import ShopService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema
-from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema,ShopFollowerSchema
 from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
 from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, UpdateDeliverySchema
 from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
@@ -258,8 +258,8 @@ class HandleShopRequest:
             data=res
         )
 
-    async def update_announcement(self, announcement_id: int, data: UpdateAnnouncementSchema):
-        res = await ShopService(session=self.session).update_announcement(announcement_id=announcement_id, data=data)
+    async def update_announcement(self, data: UpdateAnnouncementSchema,shop_id:str):
+        res = await ShopService(session=self.session).update_announcement(data=data,shop_id=shop_id)
         if res:
             return SuccessResponseTypDict(
                 detail=BaseResponseTypDict(
@@ -271,8 +271,8 @@ class HandleShopRequest:
             )
         raise HTTPException(status_code=404, detail="Announcement not found or failed to update")
 
-    async def delete_announcement(self, announcement_id: int):
-        res = await ShopService(session=self.session).delete_announcement(announcement_id=announcement_id)
+    async def delete_announcement(self, announcement_id: int,shop_id:str):
+        res = await ShopService(session=self.session).delete_announcement(announcement_id=announcement_id,shop_id=shop_id)
         if res:
             return SuccessResponseTypDict(
                 detail=BaseResponseTypDict(
@@ -283,4 +283,53 @@ class HandleShopRequest:
                 data=res
             )
         raise HTTPException(status_code=404, detail="Announcement not found or failed to delete")
+
+    async def follow_shop(self, data: ShopFollowerSchema):
+        res = await ShopService(session=self.session).follow_shop(data=data)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Shop followed successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(status_code=400, detail="Failed to follow shop")
+
+    async def unfollow_shop(self, shop_id: str, user_id: str):
+        res = await ShopService(session=self.session).unfollow_shop(shop_id=shop_id, user_id=user_id)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Shop unfollowed successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data={"shop_id": shop_id, "user_id": user_id}
+            )
+        raise HTTPException(status_code=404, detail="Follow connection not found or failed to delete")
+
+    async def get_shop_followers(self, shop_id: str):
+        res = await ShopService(session=self.session).get_shop_followers(shop_id=shop_id)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Shop followers fetched successfully",
+                success=True,
+                status_code=200
+            ),
+            data=res
+        )
+
+    async def get_user_followed_shops(self, user_id: str):
+        res = await ShopService(session=self.session).get_user_followed_shops(user_id=user_id)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="User followed shops fetched successfully",
+                success=True,
+                status_code=200
+            ),
+            data=res
+        )
+
 

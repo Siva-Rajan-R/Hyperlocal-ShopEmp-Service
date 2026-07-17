@@ -1,6 +1,6 @@
 from icecream import ic
 from ..repos.employee_repo import EmployeeRepo
-from .user_service import UserService
+from ..models.shop_model import Shops
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
 from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema
@@ -16,7 +16,9 @@ from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_
 from core.utils.token_utils import generate_verification_token, decode_verification_token
 from core.utils.email_sender import send_verification_email
 from integrations.utility_service import get_ui_id, get_shop_category, get_shop_unit
+from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDict,BaseResponseTypDict,ErrorResponseTypDict
 import httpx
+from integrations.auth_service import get_or_create_user
 
 ACTIVITY_LOG_URL = "http://127.0.0.1:8001/activity-logs"
 
@@ -41,31 +43,46 @@ class EmployeeService(BaseServiceModel):
     def __init__(self, session:AsyncSession):
         super().__init__(session)
         self.employee_repo_obj=EmployeeRepo(session=session)
-        self.user_service_obj=UserService(session=session)
 
 
     async def create(self, data:CreateEmployeeSchema, owner_user_id:str)-> dict:
         employee_id=generate_uuid()
         shop_id = data.shop_id
         
-        # 1. Create or get user record first
-        user = await self.user_service_obj.get_or_create_user(
-            name=data.name,
-            email=data.email,
-            mobile_number=data.mobile_number
-        )
-        user_id = user['id']
+        # Check in Authentication Service by email or mobile number
+        user_id = None
+        user_res=await get_or_create_user(email=data.email,mobile_number=data.mobile_number)
+                    
+        if user_res:
+            user_id = user_res.get("user_id")
+        else:
+            raise HTTPException(status_code=400, detail="Could not resolve user ID from authentication service.")
 
-        # from infras.read_db.repos.shopidconfig_repo import ShopIdConfigReadDbRepo
-        # from core.utils.id_formatter import format_ui_id
+        is_owner=(await self.session.execute(select(Shops.id).where(Shops.user_id==user_id))).mappings().all()
+        ic(is_owner)
+        if is_owner:
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorResponseTypDict(
+                    msg="Error : Creating Employee",
+                    description="Shop owner cannot be added as an employee",
+                    success=False,
+                    status_code=400
+                )
+            )
+
+        existing_employee = await self.employee_repo_obj.is_employee_exists(employee_account_id=user_id, shop_id=shop_id)
+        if existing_employee:
+            raise HTTPException(
+                status_code=400,
+                detail=ErrorResponseTypDict(
+                    msg="Error : Creating Employee",
+                    description="User is already an employee of this shop",
+                    success=False,
+                    status_code=400
+                )
+            )
         
-        # shop_config = await ShopIdConfigReadDbRepo.get_config(shop_id)
-        # emp_config = shop_config.get("employee", {})
-        # prefix = emp_config.get("prefix", "EMP")
-        # start_from = emp_config.get("start_from", 1)
-        
-        # raw_sequence = await self.employee_repo_obj.get_next_sequence(shop_id, start_from)
-        # ui_id_str = format_ui_id(prefix, start_from, raw_sequence)
         ui_id=None
         ui_id_res = await get_ui_id(shop_id=data.shop_id)
         if isinstance(ui_id_res, dict) and "prefix" in ui_id_res:
@@ -73,11 +90,12 @@ class EmployeeService(BaseServiceModel):
         else:
             return False
 
-        # 2. Add Employee Record
+        # Add Employee Record
         data_toadd=CreateEmployeeDbSchema(
             id=employee_id,
             ui_id=ui_id,
             user_id=user_id,
+            name=data.name,
             added_by=owner_user_id,
             shop_id=shop_id,
             role=data.role,
@@ -88,7 +106,27 @@ class EmployeeService(BaseServiceModel):
         )
         res=await self.employee_repo_obj.create(data=data_toadd)
         if res:
-            # 3. Generate verification token and send email
+            try:
+                from ...read_db.services.employee_service import ReadDbEmployeeService
+                from ...read_db.models.employee_model import ReadDbEmployeeCreateModel
+                mongo_payload = ReadDbEmployeeCreateModel(
+                    employee_id=res["id"],
+                    user_id=res["user_id"],
+                    shop_id=res["shop_id"],
+                    name=res["name"],
+                    email=data.email,
+                    mobile_number=data.mobile_number,
+                    is_accepted=res["accepted"],
+                    added_by=res["added_by"],
+                    role=res["role"],
+                    joined_date=str(res["joined_date"]),
+                    department=res["department"],
+                    additional_infos=res.get("additional_infos") or {}
+                )
+                await ReadDbEmployeeService(payload=mongo_payload).create()
+            except Exception as e:
+                ic(f"Failed to sync employee to MongoDB: {e}")
+
             token = generate_verification_token(employee_id=employee_id, shop_id=shop_id)
             await send_verification_email(email=data.email, name=data.name, token=token)
 
@@ -109,33 +147,42 @@ class EmployeeService(BaseServiceModel):
         # Merge optional updates into additional_infos
         additional_infos = {}
         if data.additional_infos:
-            additional_infos = data.datas.model_dump(exclude_unset=True)
+            additional_infos = data.additional_infos.model_dump(exclude_unset=True) if hasattr(data.additional_infos, 'model_dump') else data.additional_infos
 
-        data_toupdate=UpdateEmployeeDbSchema(additional_infos=additional_infos,**data.model_dump(mode="json",exclude=['additional_infos'],exclude_none=True,exclude_unset=True))
+        data_toupdate=UpdateEmployeeDbSchema(additional_infos=additional_infos,**data.model_dump(mode="json",exclude={'additional_infos'},exclude_none=True,exclude_unset=True))
 
         res=await self.employee_repo_obj.update(data=data_toupdate)
-        # if res and old_employee:
-        #     changes_list = []
-        #     desc_changes = []
-        #     dump_data = data.model_dump(exclude_unset=True, exclude_none=True)
-        #     for k, v in dump_data.items():
-        #         if k not in ["id", "shop_id"] and k in old_employee and str(old_employee[k]) != str(v):
-        #             desc_changes.append(f"{k} prv({old_employee[k]}) after ({v})")
-        #             changes_list.append({"field": k, "before": str(old_employee[k]), "after": str(v)})
-        #     if desc_changes:
-        #         await _send_activity_log(
-        #             shop_id=data.shop_id,
-        #             action="UPDATE",
-        #             entity_id=data.id,
-        #             description=f"Updated employee: {', '.join(desc_changes)}",
-        #             changes=changes_list
-        #         )
+        if res:
+            try:
+                from ...read_db.services.employee_service import ReadDbEmployeeService
+                from ...read_db.models.employee_model import ReadDbEmployeeUpdateModel
+                mongo_update = ReadDbEmployeeUpdateModel(
+                    name=res.get("name"),
+                    role=res.get("role"),
+                    joined_date=str(res.get("joined_date")) if res.get("joined_date") else None,
+                    department=res.get("department"),
+                    additional_infos=res.get("additional_infos") or {}
+                )
+                await ReadDbEmployeeService(
+                    payload=mongo_update,
+                    conditions={"employee_id": data.id, "shop_id": data.shop_id}
+                ).update()
+            except Exception as e:
+                ic(f"Failed to sync employee update to MongoDB: {e}")
         return res
 
     async def delete(self,data:DeleteEmployeeSchema)-> dict | None:
         old_employee = await self.employee_repo_obj.getby_id(GetEmployeeByIdSchema(id=data.id, shop_id=data.shop_id))
         res=await self.employee_repo_obj.delete(data=data)
         if res:
+            try:
+                from ...read_db.services.employee_service import ReadDbEmployeeService
+                await ReadDbEmployeeService(
+                    conditions={"employee_id": data.id, "shop_id": data.shop_id}
+                ).delete()
+            except Exception as e:
+                ic(f"Failed to sync employee deletion to MongoDB: {e}")
+
             employee_name = old_employee.get('name', 'Unknown') if old_employee else 'Unknown'
             await _send_activity_log(
                 shop_id=data.shop_id,
@@ -148,7 +195,16 @@ class EmployeeService(BaseServiceModel):
     
 
     async def get(self,data:GetAllEmployeesSchema)-> dict:
-        res=await self.employee_repo_obj.get(data=data)
+        try:
+            from ...read_db.services.employee_service import ReadDbEmployeeService
+            read_service = ReadDbEmployeeService(payload=None, conditions={})
+            res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset)
+        except Exception as e:
+            ic(f"Failed to fetch employees from MongoDB: {e}")
+            res = None
+        
+        if not res:
+            res=await self.employee_repo_obj.get(data=data)
         
         if data.offset in (0, 1):
             overall_values = await self.employee_repo_obj.get_overall_values(data=data)
@@ -162,13 +218,34 @@ class EmployeeService(BaseServiceModel):
     
 
     async def getby_id(self,data:GetEmployeeByIdSchema)-> dict | None:
-        res=await self.employee_repo_obj.getby_id(data=data)
+        try:
+            from ...read_db.services.employee_service import ReadDbEmployeeService
+            read_service = ReadDbEmployeeService(payload=None, conditions={"employee_id": data.id, "shop_id": data.shop_id})
+            res = await read_service.get_one(queries={"employee_id": data.id, "shop_id": data.shop_id})
+        except Exception as e:
+            ic(f"Failed to fetch employee from MongoDB: {e}")
+            res = None
+
+        if not res:
+            res=await self.employee_repo_obj.getby_id(data=data)
         return res
 
     
 
     async def getby_shopid(self,data:GetEmployeeByShopIdSchema)-> dict:
-        res=await self.employee_repo_obj.getby_shopid(data=data)
+        try:
+            from ...read_db.services.employee_service import ReadDbEmployeeService
+            read_service = ReadDbEmployeeService(payload=None, conditions={})
+            if data.query:
+                res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset)
+            else:
+                res = await read_service.getby_queries(queries={"shop_id": data.shop_id}, limit=data.limit, offset=data.offset)
+        except Exception as e:
+            ic(f"Failed to fetch employees from MongoDB: {e}")
+            res = None
+        
+        if not res:
+            res=await self.employee_repo_obj.getby_shopid(data=data)
         
         if data.offset in (0, 1):
             overall_values = await self.employee_repo_obj.get_overall_values(data=data)
@@ -198,6 +275,16 @@ class EmployeeService(BaseServiceModel):
         success = await self.employee_repo_obj.accept_employee(employee_id=employee_id, shop_id=shop_id)
         if not success:
             raise HTTPException(status_code=404, detail="Employee invitation record not found")
+        
+        try:
+            from ...read_db.services.employee_service import ReadDbEmployeeService
+            from ...read_db.models.employee_model import ReadDbEmployeeUpdateModel
+            await ReadDbEmployeeService(
+                payload=ReadDbEmployeeUpdateModel(is_accepted=True),
+                conditions={"employee_id": employee_id, "shop_id": shop_id}
+            ).update()
+        except Exception as e:
+            ic(f"Failed to sync acceptance to MongoDB: {e}")
         
         return {"success": True, "employee_id": employee_id, "shop_id": shop_id}
 

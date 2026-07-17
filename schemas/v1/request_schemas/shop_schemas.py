@@ -70,3 +70,7 @@ class GetShopByUserIdSchema(BaseModel):
 
 class VerifyShoSchema(BaseModel):
     shop_id:str
+
+class ShopFollowerSchema(BaseModel):
+    shop_id: str
+    user_id: str

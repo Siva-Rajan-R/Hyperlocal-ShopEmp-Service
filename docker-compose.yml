@@ -1,0 +1,16 @@
+services:
+  shopemp-service:
+    build: 
+      context: .
+      dockerfile: .
+    
+    env_file:
+      - .env
+    
+    networks:
+      - backend-networks
+    
+    ports:
+      - "8001:8000"
+    
+    restart: unless-stopped

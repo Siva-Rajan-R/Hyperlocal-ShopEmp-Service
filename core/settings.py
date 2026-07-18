@@ -17,6 +17,10 @@ class ShopEmployeeSettings(BaseSettings):
     SMTP_PORT:int
     SMTP_USER:str
     SMTP_PASS:str
+    RABBITMQ_HOST:str
+    RABBITMQ_PORT:int
+    RABBITMQ_LOGIN:str
+    RABBITMQ_PASSWORD:str
 
     model_config={
         "case_sensitive":False,

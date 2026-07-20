@@ -5,7 +5,7 @@ from ...handlers.shop import (
     GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema,
     CreateOperatingHoursSchema, UpdateOperatingHoursSchema,
     CreateDeliverySchema, UpdateDeliverySchema,
-    CreateAnnouncementSchema, UpdateAnnouncementSchema, ShopFollowerSchema
+    CreateAnnouncementSchema, UpdateAnnouncementSchema, ShopFollowerSchema, GetBulkShopsByIdSchema
 )
 from core.permissions.role_checker import require_permission
 from typing import Annotated,List,Literal
@@ -149,6 +149,9 @@ async def get_by_userid(
 async def get_byid(session:PG_ASYNC_SESSION,data:GetShopByIdSchema=Depends()):
     return await HandleShopRequest(session=session).getby_id(data=data)
 
+@router.post('/by/ids')
+async def get_bulk_by_ids(data: GetBulkShopsByIdSchema, session: PG_ASYNC_SESSION):
+    return await HandleShopRequest(session=session).get_bulk_by_ids(data=data)
 
 @router.get('')
 async def get_all(session:PG_ASYNC_SESSION,data:GetAllShopsSchema=Depends()):

@@ -7,7 +7,8 @@ from fastapi import HTTPException
 
 
 
-BASE_AUTH_SERVICE_URL="http://127.0.0.1:8010"
+# BASE_AUTH_SERVICE_URL="http://127.0.0.1:8010"
+BASE_AUTH_SERVICE_URL="http://authentication-service:8000"
 
 
 async def get_or_create_user(email:Optional[EmailStr]=None,mobile_number:Optional[str]=None):

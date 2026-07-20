@@ -2,7 +2,7 @@ from ..repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from .employee_service import EmployeeService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
-from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByUserIdSchema,VerifyShoSchema,ShopFollowerSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByUserIdSchema,VerifyShoSchema,ShopFollowerSchema,GetBulkShopsByIdSchema
 from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
 from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, UpdateDeliverySchema
 from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
@@ -311,6 +311,25 @@ class ShopService(BaseServiceModel):
                     r['category'] = cats[0] if cats else ''
                     r['datas'] = r.pop('additional_infos', {}) or {}
                     r['image_urls'] = []
+        return res
+
+    async def get_bulk_by_ids(self, data: GetBulkShopsByIdSchema) -> List[dict]:
+        try:
+            from ...read_db.services.shop_service import ReadDbShopService
+            read_service = ReadDbShopService(payload=None, conditions={})
+            res = await read_service.getby_queries(queries={"id": {"$in": data.shop_ids}})
+        except Exception as e:
+            ic(f"Failed to fetch bulk shops from MongoDB: {e}")
+            res = None
+
+        if not res:
+            res = await self.shop_repo_obj.get_bulk_shops_by_id(shop_ids=data.shop_ids, timezone_val=data.timezone.value)
+            res = [dict(r) for r in res]
+            for r in res:
+                cats = r.get('categories', [])
+                r['category'] = cats[0] if cats else ''
+                r['datas'] = r.pop('additional_infos', {}) or {}
+                r['image_urls'] = []
         return res
     
     async def verify_shop(self,data:VerifyShoSchema)-> bool:

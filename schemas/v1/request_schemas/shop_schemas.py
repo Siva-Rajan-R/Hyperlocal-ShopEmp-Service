@@ -73,4 +73,8 @@ class VerifyShoSchema(BaseModel):
 
 class ShopFollowerSchema(BaseModel):
     shop_id: str
-    user_id: str
+    user_id: str
+
+class GetBulkShopsByIdSchema(BaseModel):
+    shop_ids: List[str]
+    timezone: Optional[TimeZoneEnum] = Field(default=TimeZoneEnum.Asia_Kolkata)

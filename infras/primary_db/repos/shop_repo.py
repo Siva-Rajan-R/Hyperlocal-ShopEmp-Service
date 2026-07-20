@@ -466,5 +466,16 @@ class ShopRepo(BaseRepoModel):
         res = await self.session.execute(stmt)
         return [dict(r) for r in res.mappings().all()]
 
+    async def get_bulk_shops_by_id(self, shop_ids: List[str], timezone_val: str) -> List[dict]:
+        created_at = func.date(func.timezone(timezone_val, Shops.created_at)).label("created_at")
+        stmt = select(
+            *self.shop_cols,
+            created_at
+        ).where(
+            Shops.id.in_(shop_ids)
+        )
+        res = await self.session.execute(stmt)
+        return [_map_shop(row) for row in res.mappings().all()]
+
 
 

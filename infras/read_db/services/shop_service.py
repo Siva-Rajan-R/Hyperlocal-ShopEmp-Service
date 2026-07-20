@@ -26,7 +26,7 @@ class ReadDbShopService(BaseReadDbModel):
     async def delete(self):
         return await self.base_Repo_obj.delete(conditions=self.conditions)
 
-    async def get(self, query: str, limit: Optional[int] = None, offset: Optional[int] = None):
+    async def get(self, query: str, limit: Optional[int] = None, offset: Optional[int] = None, visible_online: Optional[bool] = None):
         query = query.strip()
         queries = {
             "$or": [
@@ -37,6 +37,13 @@ class ReadDbShopService(BaseReadDbModel):
                 {'categories': {'$regex': query, '$options': 'i'}},
             ]
         }
+        if visible_online is not None:
+            queries = {
+                "$and": [
+                    queries,
+                    {"visible_online": visible_online}
+                ]
+            }
         return await self.base_Repo_obj.get(queries=queries, offset=offset, limit=limit)
 
     async def getby_queries(self, queries: dict, limit: Optional[int] = None, offset: Optional[int] = None):

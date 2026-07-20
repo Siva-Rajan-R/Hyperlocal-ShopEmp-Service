@@ -257,7 +257,7 @@ class ShopService(BaseServiceModel):
         try:
             from ...read_db.services.shop_service import ReadDbShopService
             read_service = ReadDbShopService(payload=None, conditions={})
-            res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset)
+            res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset, visible_online=data.visible_online)
         except Exception as e:
             ic(f"Failed to fetch shops from MongoDB: {e}")
             res = None

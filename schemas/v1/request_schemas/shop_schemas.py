@@ -54,6 +54,7 @@ class GetAllShopsSchema(BaseModel):
     limit:Optional[int]=Field(default=10,le=100)
     offset:Optional[int]=Field(default=1)
     timezone:Optional[TimeZoneEnum]=Field(default=TimeZoneEnum.Asia_Kolkata)
+    visible_online:Optional[bool]=None
 
     model_config={
         "populate_by_name":True

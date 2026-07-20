@@ -129,20 +129,23 @@ class ShopRepo(BaseRepoModel):
         cursor=(data.offset-1)*data.limit
         created_at=func.date(func.timezone(data.timezone.value,Shops.created_at)).label("created_at")
 
+        where_conds = [
+            or_(
+                Shops.id.ilike(search_term),
+                func.cast(created_at,String).ilike(search_term)
+            ),
+            Shops.sequence_id>cursor
+        ]
+        if data.visible_online is not None:
+            where_conds.append(Shops.visible_online == data.visible_online)
+
         shop_stmt=(
             select(
                 *self.shop_cols,
                 created_at,
             )
             .where(
-                and_(
-                    or_(
-                        Shops.id.ilike(search_term),
-                        func.cast(created_at,String).ilike(search_term)
-                    ),
-                    Shops.sequence_id>cursor
-                )
-                
+                and_(*where_conds)
             )
             .limit(limit=data.limit)
             .offset(offset=cursor)

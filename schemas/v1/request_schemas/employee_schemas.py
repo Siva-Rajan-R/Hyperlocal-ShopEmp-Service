@@ -53,6 +53,10 @@ class GetAllEmployeesSchema(BaseModel):
     limit:Optional[int]=Field(default=10,le=100)
     offset:Optional[int]=1
     timezone:Optional[TimeZoneEnum]=TimeZoneEnum.Asia_Kolkata
+    from_date:Optional[str]=None
+    to_date:Optional[str]=None
+    role:Optional[str]=None
+    department:Optional[str]=None
 
     model_config={
         "populate_by_name":True
@@ -69,6 +73,10 @@ class GetEmployeeByShopIdSchema(BaseModel):
     limit:Optional[int]=Field(default=10,le=100)
     offset:Optional[int]=1
     timezone:Optional[TimeZoneEnum]=TimeZoneEnum.Asia_Kolkata
+    from_date:Optional[str]=None
+    to_date:Optional[str]=None
+    role:Optional[str]=None
+    department:Optional[str]=None
 
     model_config={
         "populate_by_name":True

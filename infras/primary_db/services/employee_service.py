@@ -87,9 +87,6 @@ class EmployeeService(BaseServiceModel):
         ui_id_res = await get_ui_id(shop_id=data.shop_id)
         if isinstance(ui_id_res, dict) and "prefix" in ui_id_res:
             ui_id = f"{ui_id_res.get('prefix')}-{ui_id_res.get('current_number')}"
-        else:
-            return False
-
         # Add Employee Record
         data_toadd=CreateEmployeeDbSchema(
             id=employee_id,
@@ -132,10 +129,11 @@ class EmployeeService(BaseServiceModel):
 
             await _send_activity_log(
                 shop_id=shop_id,
-                action="CREATE",
+                action="CREATED",
                 entity_id=employee_id,
-                description=f"Created and invited new employee: {data.name}",
-                changes=[{"field": "name", "before": "", "after": str(data.name)}]
+                entity_name=str(data.name),
+                description=f"Created Employee {data.name} ({employee_id})",
+                changes=[]
             )
         return res
 
@@ -169,6 +167,38 @@ class EmployeeService(BaseServiceModel):
                 ).update()
             except Exception as e:
                 ic(f"Failed to sync employee update to MongoDB: {e}")
+
+            try:
+                def _is_empty_or_none(val):
+                    if val is None: return True
+                    if isinstance(val, (dict, list, set, str, tuple)) and len(val) == 0: return True
+                    return str(val).strip() in ("None", "{}", "[]", "", "null", "NoneType")
+
+                dumped_updates = data.model_dump(exclude_unset=True, exclude_none=True)
+                changes = []
+                for key, new_val in dumped_updates.items():
+                    if key in ["id", "shop_id", "user_id", "cur_user_id"]:
+                        continue
+                    prev_val = old_employee.get(key) if old_employee else None
+                    if _is_empty_or_none(prev_val) and _is_empty_or_none(new_val):
+                        continue
+                    if prev_val != new_val and str(prev_val).strip() != str(new_val).strip():
+                        changes.append({
+                            "field": key,
+                            "before": str(prev_val) if prev_val is not None else "None",
+                            "after": str(new_val) if new_val is not None else "None"
+                        })
+                emp_name = res.get("name") or (old_employee.get("name") if old_employee else "Employee")
+                await _send_activity_log(
+                    shop_id=data.shop_id,
+                    action="UPDATED",
+                    entity_id=data.id,
+                    entity_name=str(emp_name),
+                    description=f"Updated Employee {emp_name} ({data.id})",
+                    changes=changes
+                )
+            except Exception as log_err:
+                ic(f"Failed to send employee update log: {log_err}")
         return res
 
     async def delete(self,data:DeleteEmployeeSchema)-> dict | None:
@@ -183,13 +213,14 @@ class EmployeeService(BaseServiceModel):
             except Exception as e:
                 ic(f"Failed to sync employee deletion to MongoDB: {e}")
 
-            employee_name = old_employee.get('name', 'Unknown') if old_employee else 'Unknown'
+            employee_name = old_employee.get('name', 'Employee') if old_employee else 'Employee'
             await _send_activity_log(
                 shop_id=data.shop_id,
-                action="DELETE",
+                action="DELETED",
                 entity_id=data.id,
-                description=f"Deleted employee: {employee_name}",
-                changes=[{"field": "name", "before": str(employee_name), "after": "DELETED"}]
+                entity_name=str(employee_name),
+                description=f"Deleted Employee {employee_name} ({data.id})",
+                changes=[]
             )
         return res
     

@@ -1,9 +1,12 @@
 import httpx
 from icecream import ic
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 # BAASE_URL="http://127.0.0.1:8001"
-BAASE_URL="http://shopemp-service:8000"
+BAASE_URL= os.getenv("SHOPEMP_SERVICE_URL")
 async def get_fields(service_name:str,shop_id:str):
     async with httpx.AsyncClient() as request:
         base_fields_req=await request.get(f"{BAASE_URL}/fields/base/by/s-name/{service_name}")

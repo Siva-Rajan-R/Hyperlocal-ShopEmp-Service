@@ -138,22 +138,42 @@ class EmployeeRepo(BaseRepoModel):
     
 
     async def get(self,data:GetAllEmployeesSchema)-> List[dict] | None:
-        search_term=f"%{data.query}%"
-        created_at=func.date(func.timezone(data.timezone.value,Employees.created_at))
+        from datetime import datetime
         cursor=(data.offset-1)*data.limit
+
+        conds = []
+        if getattr(data, 'query', None):
+            search_term=f"%{data.query}%"
+            conds.append(
+                or_(
+                    Employees.id.ilike(search_term),
+                    Employees.ui_id.ilike(search_term),
+                    Employees.name.ilike(search_term)
+                )
+            )
+        if getattr(data, 'role', None):
+            conds.append(Employees.role.ilike(f"%{data.role}%"))
+        if getattr(data, 'department', None):
+            conds.append(Employees.department.ilike(f"%{data.department}%"))
+        if getattr(data, 'from_date', None):
+            try:
+                from_dt = datetime.strptime(data.from_date, "%Y-%m-%d")
+                conds.append(Employees.created_at >= from_dt)
+            except Exception:
+                pass
+        if getattr(data, 'to_date', None):
+            try:
+                to_date_str = data.to_date
+                if len(to_date_str) <= 10:
+                    to_date_str += ' 23:59:59'
+                to_dt = datetime.strptime(to_date_str, "%Y-%m-%d %H:%M:%S")
+                conds.append(Employees.created_at <= to_dt)
+            except Exception:
+                pass
 
         employee_stmt=(
             select(*self.select_cols, created_at)
-            .where(
-                and_(
-                    or_(
-                        Employees.id.ilike(search_term),
-                        func.cast(created_at,String).ilike(search_term)
-                    ),
-                    Employees.sequence_id>cursor
-                )
-                
-            )
+            .where(and_(*conds))
             .limit(limit=data.limit)
             .offset(offset=cursor)
         )
@@ -178,23 +198,42 @@ class EmployeeRepo(BaseRepoModel):
     
 
     async def getby_shopid(self,data:GetEmployeeByShopIdSchema)-> List[dict] | list:
-        search_term=f"%{data.query}%"
-        created_at=func.date(func.timezone(data.timezone.value,Employees.created_at))
+        from datetime import datetime
         cursor=(data.offset-1)*data.limit
+
+        conds = [Employees.shop_id==data.shop_id]
+        if getattr(data, 'query', None):
+            search_term=f"%{data.query}%"
+            conds.append(
+                or_(
+                    Employees.id.ilike(search_term),
+                    Employees.ui_id.ilike(search_term),
+                    Employees.name.ilike(search_term)
+                )
+            )
+        if getattr(data, 'role', None):
+            conds.append(Employees.role.ilike(f"%{data.role}%"))
+        if getattr(data, 'department', None):
+            conds.append(Employees.department.ilike(f"%{data.department}%"))
+        if getattr(data, 'from_date', None):
+            try:
+                from_dt = datetime.strptime(data.from_date, "%Y-%m-%d")
+                conds.append(Employees.created_at >= from_dt)
+            except Exception:
+                pass
+        if getattr(data, 'to_date', None):
+            try:
+                to_date_str = data.to_date
+                if len(to_date_str) <= 10:
+                    to_date_str += ' 23:59:59'
+                to_dt = datetime.strptime(to_date_str, "%Y-%m-%d %H:%M:%S")
+                conds.append(Employees.created_at <= to_dt)
+            except Exception:
+                pass
 
         employee_stmt=(
             select(*self.select_cols, created_at)
-            .where(
-                and_(
-                    Employees.shop_id==data.shop_id,
-                    or_(
-                        Employees.id.ilike(search_term),
-                        func.cast(created_at,String).ilike(search_term)
-                    ),
-                    Employees.sequence_id>cursor
-                )
-                
-            )
+            .where(and_(*conds))
             .limit(limit=data.limit)
             .offset(offset=cursor)
         )

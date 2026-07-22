@@ -3,12 +3,15 @@ from icecream import ic
 from typing import Optional,List
 from pydantic import EmailStr
 from fastapi import HTTPException
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 
 
 
 # BASE_AUTH_SERVICE_URL="http://127.0.0.1:8010"
-BASE_AUTH_SERVICE_URL="http://authentication-service:8000"
+BASE_AUTH_SERVICE_URL= os.getenv("AUTHENTICATION_SERVICE_URL")
 
 
 async def get_or_create_user(email:Optional[EmailStr]=None,mobile_number:Optional[str]=None):

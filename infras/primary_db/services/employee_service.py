@@ -20,21 +20,26 @@ from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDic
 import httpx
 from integrations.auth_service import get_or_create_user
 
-ACTIVITY_LOG_URL = "http://127.0.0.1:8001/activity-logs"
-
-async def _send_activity_log(shop_id: str, action: str, entity_id: str, description: str, changes: list = None):
+async def _send_activity_log(shop_id: str, action: str, entity_id: str, description: str, changes: list = None, entity_name: str = ""):
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            await client.post(ACTIVITY_LOG_URL, json={
+        from messaging.main import RabbitMQMessagingConfig
+        rabbitmq_msg_obj = RabbitMQMessagingConfig()
+        await rabbitmq_msg_obj.publish_event(
+            routing_key="activity_logs.routing.key",
+            exchange_name="activity_logs.exchange",
+            payload={
                 "shop_id": shop_id,
-                "user_name": "siva",
-                "service": "Employee",
+                "user_name": "Hyperlocal-User",
+                "service": "EMPLOYEE",
                 "action": action,
-                "entity_type": "Employee",
-                "entity_id": entity_id,
+                "entity_type": "EMPLOYEE",
+                "entity_id": str(entity_id),
+                "entity_name": str(entity_name),
                 "description": description,
                 "changes": changes or []
-            })
+            },
+            headers={}
+        )
     except Exception as e:
         ic(f"Failed to log activity: {e}")
 

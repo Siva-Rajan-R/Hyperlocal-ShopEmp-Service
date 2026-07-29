@@ -109,6 +109,7 @@ class ShopService(BaseServiceModel):
                 
                 payload = {
                     "shop_id": shop_id,
+                    "categories": res_dict.get("categories") or [],
                     "user_name": "system",
                     "service": "Shop",
                     "action": "CREATE",

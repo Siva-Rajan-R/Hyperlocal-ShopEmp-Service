@@ -6,7 +6,7 @@ from infras.primary_db.services.shop_service import ShopService
 from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDict,BaseResponseTypDict,ErrorResponseTypDict
-from typing import Optional
+from typing import Optional, List
 from icecream import ic
 from core.utils.token_utils import generate_verification_token, decode_verification_token
 from core.utils.email_sender import send_verification_email
@@ -76,6 +76,27 @@ class HandleEmployeeRequest:
                 status_code=500
             )
         )
+
+
+    async def create_bulk(self, data: List[CreateEmployeeSchema], user_id: str):
+        created_list = []
+        for item in data:
+            try:
+                res_obj = await self.create(data=item, user_id=user_id)
+                if isinstance(res_obj, dict) and res_obj.get("data"):
+                    created_list.append(res_obj["data"])
+            except Exception as e:
+                ic(f"Error creating bulk employee item: {e}")
+
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Bulk employees created successfully",
+                status_code=201,
+                success=True
+            ),
+            data=created_list
+        )
+
 
 
     async def update(self,data:UpdateEmployeeSchema):

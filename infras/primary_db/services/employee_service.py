@@ -142,6 +142,18 @@ class EmployeeService(BaseServiceModel):
             )
         return res
 
+    async def create_bulk(self, data: List[CreateEmployeeSchema], owner_user_id: str) -> List[dict]:
+        results = []
+        for item in data:
+            try:
+                res = await self.create(data=item, owner_user_id=owner_user_id)
+                if res:
+                    results.append(res)
+            except Exception as e:
+                ic(f"Error creating bulk employee item: {e}")
+        return results
+
+
 
     async def update(self, data:UpdateEmployeeSchema) -> dict | None:
         old_employee = await self.employee_repo_obj.getby_id(GetEmployeeByIdSchema(id=data.id, shop_id=data.shop_id))

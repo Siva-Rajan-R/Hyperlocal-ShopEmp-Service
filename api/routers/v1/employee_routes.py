@@ -20,6 +20,16 @@ async def create(
 ):
     return await HandleEmployeeRequest(session=session).create(data=data,user_id=auth_data["user_id"])
 
+
+@router.post('/bulk')
+async def create_bulk(
+    data:List[CreateEmployeeSchema],
+    session:PG_ASYNC_SESSION,
+    auth_data: Annotated[dict, Depends(require_permission("create_employee"))]
+):
+    return await HandleEmployeeRequest(session=session).create_bulk(data=data,user_id=auth_data["user_id"])
+
+
 @router.put('')
 async def update(
     data:UpdateEmployeeSchema,

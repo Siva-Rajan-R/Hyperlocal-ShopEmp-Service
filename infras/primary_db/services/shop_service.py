@@ -1,8 +1,9 @@
 from ..repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
+import math
 from .employee_service import EmployeeService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
-from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByUserIdSchema,VerifyShoSchema,ShopFollowerSchema,GetBulkShopsByIdSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByUserIdSchema,VerifyShoSchema,ShopFollowerSchema,GetBulkShopsByIdSchema,GetGeofencedShopsSchema
 from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
 from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, UpdateDeliverySchema
 from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
@@ -297,8 +298,23 @@ class ShopService(BaseServiceModel):
     async def getby_userid(self,data:GetShopByUserIdSchema)-> List[dict] | list:
         try:
             from ...read_db.services.shop_service import ReadDbShopService
+            from ...read_db.services.employee_service import ReadDbEmployeeService
+            
             read_service = ReadDbShopService(payload=None, conditions={})
-            res = await read_service.getby_queries(queries={"user_id": data.user_id})
+            owned_shops = await read_service.getby_queries(queries={"user_id": data.user_id}) or []
+            
+            emp_read_service = ReadDbEmployeeService(payload=None, conditions={})
+            employees = await emp_read_service.getby_queries(queries={"user_id": data.user_id, "accepted": True}) or []
+            emp_shop_ids = [emp.get("shop_id") for emp in employees if emp.get("shop_id")]
+            
+            emp_shops = []
+            if emp_shop_ids:
+                emp_shops = await read_service.getby_queries(queries={"id": {"$in": emp_shop_ids}}) or []
+                
+            res_dict = {shop.get("id"): shop for shop in owned_shops + emp_shops if shop.get("id")}
+            res = list(res_dict.values())
+            if not res and not owned_shops and not employees:
+                res = None
         except Exception as e:
             ic(f"Failed to fetch shops from MongoDB: {e}")
             res = None
@@ -544,4 +560,41 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.get_user_followed_shops(user_id=user_id)
         return res
 
+    async def get_bulk_by_ids(self, data: GetBulkShopsByIdSchema) -> List[dict]:
+        res = await self.shop_repo_obj.get_bulk_shops_by_id(shop_ids=data.shop_ids, timezone_val=data.timezone.value)
+        return res
+
+    async def get_geofenced_shops(self, data: GetGeofencedShopsSchema) -> List[dict]:
+        shops = await self.shop_repo_obj.get_geofenced_shops(data=data)
+        
+        def haversine(lat1, lon1, lat2, lon2):
+            R = 6371.0
+            dlat = math.radians(lat2 - lat1)
+            dlon = math.radians(lon2 - lon1)
+            a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            return R * c
+            
+        radius_map = {
+            "INSTANT": 25.0,
+            "STANDARD": 300.0,
+            "NATIONWIDE": float('inf'),
+            "PICKUP_ONLY": 25.0
+        }
+        max_radius = radius_map.get(data.delivery_type.value, 25.0)
+        
+        filtered_shops = []
+        for shop in shops:
+            address = shop.get('address') or {}
+            shop_lat = address.get('latitude')
+            shop_lon = address.get('longitude')
+            
+            if shop_lat is not None and shop_lon is not None:
+                dist = haversine(data.latitude, data.longitude, shop_lat, shop_lon)
+                if dist <= max_radius:
+                    filtered_shops.append(shop)
+                    
+        start_idx = (data.offset - 1) * data.limit
+        end_idx = start_idx + data.limit
+        return filtered_shops[start_idx:end_idx]
 

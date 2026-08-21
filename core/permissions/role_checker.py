@@ -10,18 +10,45 @@ from icecream import ic
 ROLE_PERMISSIONS = {
     "OWNER": {
         "create_shop", "delete_shop", "create_employee", "delete_employee", 
-        "update_shop", "update_employee", "read_all", "create_billing"
+        "update_shop", "update_employee", "read_all", "create_billing",
+        "create_supplier", "update_supplier", "delete_supplier",
+        "create_product", "update_product", "delete_product",
+        "create_purchase", "update_purchase", "delete_purchase",
+        "create_customer", "update_customer", "delete_customer",
+        "create_stock_adj", "update_stock_adj",
+        "create_order", "update_order", "delete_order"
     },
     "SUPER_ADMIN": {
         "create_employee", "delete_employee", "update_shop", "update_employee", 
-        "read_all", "create_billing"
+        "read_all", "create_billing",
+        "create_supplier", "update_supplier", "delete_supplier",
+        "create_product", "update_product", "delete_product",
+        "create_purchase", "update_purchase", "delete_purchase",
+        "create_customer", "update_customer", "delete_customer",
+        "create_stock_adj", "update_stock_adj",
+        "create_order", "update_order", "delete_order"
     },
     "ADMIN": {
-        "update_shop", "update_employee", "read_all", "create_billing"
+        "update_shop", "update_employee", "read_all", "create_billing",
+        "create_supplier", "update_supplier", "delete_supplier",
+        "create_product", "update_product", "delete_product",
+        "create_purchase", "update_purchase", "delete_purchase",
+        "create_customer", "update_customer", "delete_customer",
+        "create_stock_adj", "update_stock_adj",
+        "create_order", "update_order", "delete_order"
     },
     "BILLER": {
-        "read_all", "create_billing"
+        "read_all", "create_billing", "create_order", "update_order"
     },
+}
+
+ROLE_MODULES = {
+    "OWNER": ["DASHBOARD", "PRODUCTS", "SUPPLIERS", "PURCHASES", "INVENTORY", "BILLING", "SALES", "CUSTOMERS", "EMPLOYEES", "ONLINE_ORDERS", "DIGITAL_STORE"],
+    "SUPER_ADMIN": ["DASHBOARD", "PRODUCTS", "SUPPLIERS", "PURCHASES", "INVENTORY", "BILLING", "SALES", "CUSTOMERS", "EMPLOYEES", "ONLINE_ORDERS", "DIGITAL_STORE"],
+    "ADMIN": ["DASHBOARD", "PRODUCTS", "SUPPLIERS", "PURCHASES", "INVENTORY", "BILLING", "SALES", "CUSTOMERS", "ONLINE_ORDERS", "DIGITAL_STORE"],
+    "BILLER": ["DASHBOARD", "BILLING", "SALES", "CUSTOMERS", "PRODUCTS", "ONLINE_ORDERS"],
+    "USER": ["DASHBOARD", "PRODUCTS", "INVENTORY"],
+    "MANAGER": ["DASHBOARD", "PRODUCTS", "INVENTORY", "SALES", "CUSTOMERS", "ONLINE_ORDERS", "DIGITAL_STORE"],
 }
 
 async def get_user_role(user_id: str, shop_id: str, session: AsyncSession) -> Optional[str]:

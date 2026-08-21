@@ -1,6 +1,6 @@
 from pydantic import BaseModel,Field
 from core.data_formats.typ_dict.shop_typdict import ShopAddressTypDict,ShopBusinessInfoTypDict
-from core.data_formats.enums.shop_enums import ShopTypeEnum
+from core.data_formats.enums.shop_enums import ShopTypeEnum, DeliveryTypeEnum
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from typing import Optional,Dict,Any,List
 from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema
@@ -78,4 +78,13 @@ class ShopFollowerSchema(BaseModel):
 
 class GetBulkShopsByIdSchema(BaseModel):
     shop_ids: List[str]
-    timezone: Optional[TimeZoneEnum] = Field(default=TimeZoneEnum.Asia_Kolkata)
+    timezone: Optional[TimeZoneEnum] = Field(default=TimeZoneEnum.Asia_Kolkata)
+
+class GetGeofencedShopsSchema(BaseModel):
+    latitude: float
+    longitude: float
+    delivery_type: DeliveryTypeEnum
+    limit: Optional[int] = Field(default=20, le=100)
+    offset: Optional[int] = Field(default=1)
+    timezone: Optional[TimeZoneEnum] = Field(default=TimeZoneEnum.Asia_Kolkata)
+

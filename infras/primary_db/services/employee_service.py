@@ -18,7 +18,7 @@ from core.utils.email_sender import send_verification_email
 from integrations.utility_service import get_ui_id, get_shop_category, get_shop_unit
 from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDict,BaseResponseTypDict,ErrorResponseTypDict
 import httpx
-from integrations.auth_service import get_or_create_user
+
 
 async def _send_activity_log(shop_id: str, action: str, entity_id: str, description: str, changes: list = None, entity_name: str = ""):
     try:
@@ -56,12 +56,14 @@ class EmployeeService(BaseServiceModel):
         
         # Check in Authentication Service by email or mobile number
         user_id = None
-        user_res=await get_or_create_user(email=data.email,mobile_number=data.mobile_number)
+        temp_password = None
+        from integrations.auth_service import get_user_info
+        user_res=await get_user_info(email=data.email,mobile_number=data.mobile_number)
                     
         if user_res:
             user_id = user_res.get("user_id")
         else:
-            raise HTTPException(status_code=400, detail="Could not resolve user ID from authentication service.")
+            user_id = str(generate_uuid())
 
         is_owner=(await self.session.execute(select(Shops.id).where(Shops.user_id==user_id))).mappings().all()
         ic(is_owner)
@@ -118,7 +120,7 @@ class EmployeeService(BaseServiceModel):
                     name=res["name"],
                     email=data.email,
                     mobile_number=data.mobile_number,
-                    is_accepted=res["accepted"],
+                    accepted=res["accepted"],
                     added_by=res["added_by"],
                     role=res["role"],
                     joined_date=str(res["joined_date"]),
@@ -130,7 +132,7 @@ class EmployeeService(BaseServiceModel):
                 ic(f"Failed to sync employee to MongoDB: {e}")
 
             token = generate_verification_token(employee_id=employee_id, shop_id=shop_id)
-            await send_verification_email(email=data.email, name=data.name, token=token)
+            await send_verification_email(email=data.email, name=data.name, token=token, temp_password=temp_password)
 
             await _send_activity_log(
                 shop_id=shop_id,
@@ -320,15 +322,44 @@ class EmployeeService(BaseServiceModel):
         employee_id = payload.get("employee_id")
         shop_id = payload.get("shop_id")
         
-        success = await self.employee_repo_obj.accept_employee(employee_id=employee_id, shop_id=shop_id)
-        if not success:
+        # 1. Fetch employee record from Postgres
+        from schemas.v1.request_schemas.employee_schemas import GetEmployeeByIdSchema
+        employee_data = await self.employee_repo_obj.getby_id(GetEmployeeByIdSchema(id=employee_id, shop_id=shop_id))
+        if not employee_data:
             raise HTTPException(status_code=404, detail="Employee invitation record not found")
+            
+        employee_dict = dict(employee_data)
         
+        # 2. Fetch email/mobile from MongoDB
+        from ...read_db.services.employee_service import ReadDbEmployeeService
+        from ...read_db.models.employee_model import ReadDbEmployeeUpdateModel
+        
+        read_emp_service = ReadDbEmployeeService(payload=None, conditions={})
+        mongo_emp = await read_emp_service.get_one(queries={"employee_id": employee_id, "shop_id": shop_id})
+        
+        email = mongo_emp.get("email") if mongo_emp else None
+        mobile_number = mongo_emp.get("mobile_number") if mongo_emp else None
+        
+        # 3. Check Auth-Service
+        final_user_id = employee_dict.get("user_id")
+        
+        from integrations.auth_service import get_user_info, create_user_with_id
+        if email or mobile_number:
+            existing_user = await get_user_info(email=email, mobile_number=mobile_number)
+            if existing_user:
+                final_user_id = existing_user.get("user_id")
+            else:
+                await create_user_with_id(email=email, mobile_number=mobile_number, user_id=final_user_id)
+        
+        # 4. Accept employee and update user_id in Postgres
+        success = await self.employee_repo_obj.accept_employee(employee_id=employee_id, shop_id=shop_id, user_id=final_user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Failed to accept employee")
+        
+        # 5. Sync to MongoDB
         try:
-            from ...read_db.services.employee_service import ReadDbEmployeeService
-            from ...read_db.models.employee_model import ReadDbEmployeeUpdateModel
             await ReadDbEmployeeService(
-                payload=ReadDbEmployeeUpdateModel(is_accepted=True),
+                payload=ReadDbEmployeeUpdateModel(accepted=True, user_id=final_user_id),
                 conditions={"employee_id": employee_id, "shop_id": shop_id}
             ).update()
         except Exception as e:

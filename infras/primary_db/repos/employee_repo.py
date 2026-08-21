@@ -174,6 +174,7 @@ class EmployeeRepo(BaseRepoModel):
         employee_stmt=(
             select(*self.select_cols, created_at)
             .where(and_(*conds))
+            .order_by(Employees.created_at.desc())
             .limit(limit=data.limit)
             .offset(offset=cursor)
         )
@@ -232,8 +233,9 @@ class EmployeeRepo(BaseRepoModel):
                 pass
 
         employee_stmt=(
-            select(*self.select_cols, created_at)
+            select(*self.select_cols, Employees.created_at)
             .where(and_(*conds))
+            .order_by(Employees.created_at.desc())
             .limit(limit=data.limit)
             .offset(offset=cursor)
         )
@@ -298,11 +300,15 @@ class EmployeeRepo(BaseRepoModel):
         }
 
     @start_db_transaction
-    async def accept_employee(self, employee_id: str, shop_id: str) -> bool:
+    async def accept_employee(self, employee_id: str, shop_id: str, user_id: str = None) -> bool:
+        values = {"accepted": True}
+        if user_id:
+            values["user_id"] = user_id
+            
         stmt = (
             update(Employees)
             .where(Employees.id == employee_id, Employees.shop_id == shop_id)
-            .values(accepted=True)
+            .values(**values)
         )
         res = await self.session.execute(stmt)
         return res.rowcount > 0

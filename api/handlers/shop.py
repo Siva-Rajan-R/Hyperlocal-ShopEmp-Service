@@ -2,7 +2,7 @@ from infras.primary_db.repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from infras.primary_db.services.shop_service import ShopService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema
-from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema,ShopFollowerSchema,GetBulkShopsByIdSchema
+from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,DeleteShopSchema,GetAllShopsSchema,GetShopByUserIdSchema,GetShopByIdSchema,ShopFollowerSchema,GetBulkShopsByIdSchema,GetGeofencedShopsSchema
 from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
 from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, UpdateDeliverySchema
 from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
@@ -136,6 +136,17 @@ class HandleShopRequest:
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
                 msg="Shops fetched successfully",
+                success=True,
+                status_code=200
+            ),
+            data=res
+        )
+
+    async def get_geofenced_shops(self, data: GetGeofencedShopsSchema):
+        res = await ShopService(session=self.session).get_geofenced_shops(data=data)
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Geofenced shops fetched successfully",
                 success=True,
                 status_code=200
             ),

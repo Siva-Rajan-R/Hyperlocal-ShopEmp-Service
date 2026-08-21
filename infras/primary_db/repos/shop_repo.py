@@ -147,6 +147,7 @@ class ShopRepo(BaseRepoModel):
             .where(
                 and_(*where_conds)
             )
+            .order_by(Shops.created_at.desc())
             .limit(limit=data.limit)
             .offset(offset=cursor)
         )
@@ -175,7 +176,10 @@ class ShopRepo(BaseRepoModel):
 
     async def getby_userid(self,data:GetShopByUserIdSchema)-> List[dict] | list:
         created_at=func.date(func.timezone(data.timezone.value,Shops.created_at)).label("created_at")
-        shop_stmt=(
+        from sqlalchemy import union
+
+        # Shops owned by the user
+        stmt1 = (
             select(
                 *self.shop_cols,
                 created_at
@@ -185,6 +189,22 @@ class ShopRepo(BaseRepoModel):
             )
         )
 
+        # Shops where the user is an employee
+        stmt2 = (
+            select(
+                *self.shop_cols,
+                created_at
+            )
+            .join(Employees, Employees.shop_id == Shops.id)
+            .where(
+                and_(
+                    Employees.user_id == data.user_id,
+                    Employees.accepted == True
+                )
+            )
+        )
+        
+        shop_stmt = union(stmt1, stmt2)
         shops=(await self.session.execute(shop_stmt)).mappings().all()
         return shops
     
@@ -479,6 +499,26 @@ class ShopRepo(BaseRepoModel):
         )
         res = await self.session.execute(stmt)
         return [_map_shop(row) for row in res.mappings().all()]
+
+    async def get_geofenced_shops(self, data) -> List[dict]:
+        created_at = func.date(func.timezone(data.timezone.value, Shops.created_at)).label("created_at")
+        
+        stmt = (
+            select(
+                *self.shop_cols,
+                created_at
+            )
+            .join(ShopDelivery, ShopDelivery.shop_id == Shops.id)
+            .where(
+                and_(
+                    Shops.visible_online == True,
+                    ShopDelivery.type == data.delivery_type.value
+                )
+            )
+        )
+        res = await self.session.execute(stmt)
+        return [_map_shop(row) for row in res.mappings().all()]
+
 
 
 

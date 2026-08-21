@@ -233,3 +233,22 @@ class HandleEmployeeRequest:
             ),
             data=[]
         )
+
+    async def get_allowed_modules(self, user_id: str, shop_id: str, role: str = None):
+        from core.permissions.role_checker import get_user_role, ROLE_MODULES
+        
+        if not role:
+            role = await get_user_role(user_id=user_id, shop_id=shop_id, session=self.session)
+        
+        if not role:
+            raise HTTPException(status_code=403, detail="Access denied: Not an authorized employee/owner of this shop")
+            
+        allowed_modules = ROLE_MODULES.get(role, [])
+        return SuccessResponseTypDict(
+            detail=BaseResponseTypDict(
+                msg="Allowed modules fetched successfully",
+                status_code=200,
+                success=True
+            ),
+            data=allowed_modules
+        )

@@ -1,10 +1,13 @@
 import os
 import smtplib
+import logging
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from icecream import ic
 from core.configs.settings_config import SETTINGS
 from hyperlocal_platform.core.enums.environment_enum import EnvironmentEnum
+
+logger = logging.getLogger(__name__)
 
 SMTP_HOST = SETTINGS.SMTP_HOST
 SMTP_PORT = SETTINGS.SMTP_PORT
@@ -12,14 +15,21 @@ SMTP_USER = SETTINGS.SMTP_USER
 SMTP_PASS = SETTINGS.SMTP_PASS
 BACKEND_BASE_URL = SETTINGS.BACKEND_BASE_URL
 
-async def send_verification_email(email: str, name: str, token: str):
+async def send_verification_email(email: str, name: str, token: str, temp_password: str = None):
     verification_link = f"{BACKEND_BASE_URL}/employees/verify/token?token={token}"
+    logger.info(f"VERIFICATION URL: {verification_link}")
+    if temp_password:
+        logger.info(f"TEMPORARY PASSWORD: {temp_password}")
     
     subject = "Verify Your Employee Account"
+    
+    password_text = f"\nYour temporary password is: {temp_password}\nPlease change it after logging in." if temp_password else ""
+
     body = f"""Hi {name},
 
 You have been invited to join the shop. Please click the link below to accept the invitation and verify your account:
 {verification_link}
+{password_text}
 
 If you did not request this, please ignore this email.
 """

@@ -9,7 +9,7 @@ class ReadDbEmployeeCreateModel(BaseModel):
     name:str
     email:EmailStr
     mobile_number:str
-    is_accepted:bool
+    accepted:bool
     added_by:str
     role:str
     joined_date:Optional[str]=None
@@ -17,8 +17,9 @@ class ReadDbEmployeeCreateModel(BaseModel):
     additional_infos:Optional[dict]=None
 
 class ReadDbEmployeeUpdateModel(BaseModel):
+    user_id:Optional[str]=None
     name:Optional[str]=None
-    is_accepted:Optional[bool]=None
+    accepted:Optional[bool]=None
     role:Optional[str]=None
     mobile_number:Optional[str]=None
     email:Optional[EmailStr]=None

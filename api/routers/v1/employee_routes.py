@@ -72,6 +72,16 @@ async def delete(
     return await HandleEmployeeRequest(session=session).delete(data=data)
 
 # Read methods
+@router.get('/modules/allowed')
+async def get_modules_allowed(
+    session: PG_ASYNC_SESSION,
+    auth_data: Annotated[dict, Depends(require_permission("read_all"))]
+):
+    return await HandleEmployeeRequest(session=session).get_allowed_modules(
+        user_id=auth_data["user_id"],
+        shop_id=auth_data["shop_id"],
+        role=auth_data["role"]
+    )
 @router.get('/by/shop/{shop_id}')
 async def get_by_shopid(
     shop_id: str,
@@ -103,3 +113,10 @@ async def get_all(
     data:GetAllEmployeesSchema=Depends()
 ):
     return await HandleEmployeeRequest(session=session).get_all(data=data)
+
+# Internal methods for API Gateway
+@router.get('/internal/role/{shop_id}/{user_id}')
+async def internal_get_user_role(shop_id: str, user_id: str, session: PG_ASYNC_SESSION):
+    from core.permissions.role_checker import get_user_role
+    role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)
+    return {"role": role}

@@ -86,7 +86,7 @@ async def get_modules_allowed(
 async def get_by_shopid(
     shop_id: str,
     session:PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("read_all"))],
+    auth_data: Annotated[dict, Depends(require_permission("read_employee"))],
     data:GetEmployeeByShopIdSchema=Depends()
 ):
     data.shop_id = shop_id
@@ -98,7 +98,7 @@ async def get_by_empid(
     id: str,
     shop_id: str,
     session:PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("read_all"))],
+    auth_data: Annotated[dict, Depends(require_permission("read_employee"))],
     data:GetEmployeeByIdSchema=Depends()
 ):
     data.id = id
@@ -109,14 +109,16 @@ async def get_by_empid(
 @router.get('')
 async def get_all(
     session:PG_ASYNC_SESSION,
-    auth_data: Annotated[dict, Depends(require_permission("read_all"))],
+    auth_data: Annotated[dict, Depends(require_permission("read_employee"))],
     data:GetAllEmployeesSchema=Depends()
 ):
     return await HandleEmployeeRequest(session=session).get_all(data=data)
 
 # Internal methods for API Gateway
 @router.get('/internal/role/{shop_id}/{user_id}')
-async def internal_get_user_role(shop_id: str, user_id: str, session: PG_ASYNC_SESSION):
+async def internal_get_user_role(shop_id: str, user_id: str):
     from core.permissions.role_checker import get_user_role
-    role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)
-    return {"role": role}
+    from infras.primary_db.main import AsyncShopEmployeeLocalSession
+    async with AsyncShopEmployeeLocalSession() as session:
+        role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)
+        return {"role": role}

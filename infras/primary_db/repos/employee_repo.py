@@ -313,7 +313,6 @@ class EmployeeRepo(BaseRepoModel):
         res = await self.session.execute(stmt)
         return res.rowcount > 0
 
-    @start_db_transaction
     async def is_employee_exists(self, employee_account_id: str, shop_id: str) -> Optional[dict]:
         stmt = (
             select(*self.select_cols)

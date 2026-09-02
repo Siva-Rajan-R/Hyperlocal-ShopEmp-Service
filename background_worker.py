@@ -9,8 +9,9 @@ from core.data_formats.enums.shop_enums import AnnouncementStatusEnum
 from arq import cron
 from arq.connections import RedisSettings
 
-redis_url = os.getenv("PLATFORM_REDIS_URL", "redis://localhost:6379")
+redis_url = os.getenv("PLATFORM_REDIS_URL") or "redis://localhost:6379"
 redis_settings = RedisSettings.from_dsn(redis_url)
+
 
 # Create database engine
 engine = create_async_engine(SETTINGS.PG_DATABASE_URL)
@@ -62,9 +63,11 @@ async def shutdown(ctx):
     await engine.dispose()
 
 class WorkerSettings:
+    queue_name = "shopemp_queue"
     redis_settings = redis_settings
     on_startup = startup
     on_shutdown = shutdown
     cron_jobs = [
         cron(check_and_update_announcements, second={0, 10, 20, 30, 40, 50})
     ]
+

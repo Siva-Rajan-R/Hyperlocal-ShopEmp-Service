@@ -14,7 +14,7 @@ class CreateEmployeeDbSchema(BaseModel):
     shop_id:str
     role:EmployeeRoleEnums
     joined_date:date
-    department:EmployeeDepartmentEnums
+    department:Optional[EmployeeDepartmentEnums]=None
     accepted:bool
     additional_infos:Optional[EmployeeOptionalFieldsSchema]={}
 

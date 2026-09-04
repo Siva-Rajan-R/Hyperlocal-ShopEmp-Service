@@ -19,7 +19,7 @@ class CreateEmployeeSchema(BaseModel):
     joined_date:date
     mobile_number:str
     email:EmailStr
-    department:EmployeeDepartmentEnums
+    department:Optional[EmployeeDepartmentEnums]=None
     additional_infos:Optional[EmployeeOptionalFieldsSchema]={}
 
 class UpdateEmployeeSchema(BaseModel):

@@ -14,7 +14,7 @@ class Employees(BASE):
     name=Column(String,nullable=False)
     role=Column(String,nullable=False)
     joined_date=Column(TIMESTAMP,nullable=False)
-    department=Column(String,nullable=False)
+    department=Column(String,nullable=True)
     accepted=Column(Boolean,nullable=False)
     added_by=Column(String,nullable=False)
     additional_infos=Column(JSONB,nullable=False)

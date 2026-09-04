@@ -1,3 +1,4 @@
+from core.utils.user_context import get_activity_log_user_info
 from ..repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 import math
@@ -111,7 +112,7 @@ class ShopService(BaseServiceModel):
                 payload = {
                     "shop_id": shop_id,
                     "categories": res_dict.get("categories") or [],
-                    "user_name": "system",
+                    **get_activity_log_user_info(),
                     "service": "Shop",
                     "action": "CREATE",
                     "entity_type": "Shop",

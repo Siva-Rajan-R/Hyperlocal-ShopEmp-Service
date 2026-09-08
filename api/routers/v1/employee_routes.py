@@ -117,7 +117,13 @@ async def get_all(
 # Internal methods for API Gateway
 @router.get('/internal/role/{shop_id}/{user_id}')
 async def internal_get_user_role(shop_id: str, user_id: str):
-    from core.permissions.role_checker import get_user_role
+    import time
+    from core.permissions.role_checker import get_user_role, _USER_ROLE_CACHE
+    cache_key = (user_id, shop_id)
+    cached = _USER_ROLE_CACHE.get(cache_key)
+    if cached and (time.time() < cached[1]):
+        return {"role": cached[0]}
+
     from infras.primary_db.main import AsyncShopEmployeeLocalSession
     async with AsyncShopEmployeeLocalSession() as session:
         role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)

@@ -53,21 +53,47 @@ ROLE_MODULES = {
     "MANAGER": ["DASHBOARD", "PRODUCTS", "INVENTORY", "SALES", "CUSTOMERS", "ONLINE_ORDERS", "DIGITAL_STORE"],
 }
 
+import time
+
+# In-memory TTL cache: (user_id, shop_id) -> (role, expire_timestamp)
+_USER_ROLE_CACHE: dict = {}
+_ROLE_CACHE_TTL = 60.0  # Cache roles for 60 seconds
+
+def invalidate_user_role_cache(user_id: Optional[str] = None, shop_id: Optional[str] = None):
+    global _USER_ROLE_CACHE
+    if not user_id and not shop_id:
+        _USER_ROLE_CACHE.clear()
+        return
+    keys_to_remove = [
+        k for k in _USER_ROLE_CACHE.keys()
+        if (not user_id or k[0] == user_id) and (not shop_id or k[1] == shop_id)
+    ]
+    for k in keys_to_remove:
+        _USER_ROLE_CACHE.pop(k, None)
+
 async def get_user_role(user_id: str, shop_id: str, session: AsyncSession) -> Optional[str]:
+    now = time.time()
+    cache_key = (user_id, shop_id)
+    cached = _USER_ROLE_CACHE.get(cache_key)
+    if cached and (now < cached[1]):
+        return cached[0]
+
+    role = None
     # 1. Check if user is the shop OWNER
     shop_repo = ShopRepo(session=session)
     shop = await shop_repo.getby_id(GetShopByIdSchema(shop_id=shop_id))
     if shop and shop.get("user_id") == user_id:
-        return "OWNER"
+        role = "OWNER"
+    else:
+        # 2. Check if user is an accepted employee of the shop
+        employee_repo = EmployeeRepo(session=session)
+        employee = await employee_repo.is_employee_exists(employee_account_id=user_id, shop_id=shop_id)
+        # Check if employee exists and is accepted
+        if employee and employee.get("accepted") is True:
+            role = employee.get("role")
     
-    # 2. Check if user is an accepted employee of the shop
-    employee_repo = EmployeeRepo(session=session)
-    employee = await employee_repo.is_employee_exists(employee_account_id=user_id, shop_id=shop_id)
-    # Check if employee exists and is accepted
-    if employee and employee.get("accepted") is True:
-        return employee.get("role")
-    
-    return None
+    _USER_ROLE_CACHE[cache_key] = (role, now + _ROLE_CACHE_TTL)
+    return role
 
 def require_permission(action: str):
     async def dependency(
@@ -85,7 +111,7 @@ def require_permission(action: str):
                 user_id = user_data.get("user_id")
                 token_role = user_data.get("role")
             except Exception as e:
-                ic(f"Error parsing X-User-Infos: {e}")
+                pass
 
         # Resolve shop_id
         shop_id = request.headers.get("X-Shop-Id")
@@ -110,7 +136,6 @@ def require_permission(action: str):
         if not role:
             role = await get_user_role(user_id=user_id, shop_id=shop_id, session=session)
         
-        ic(role)
         if not role:
             raise HTTPException(status_code=403, detail="Access denied: Not an authorized employee/owner of this shop")
 
@@ -118,7 +143,6 @@ def require_permission(action: str):
         if action not in allowed_actions:
             raise HTTPException(status_code=403, detail=f"Access denied: Role '{role}' does not have '{action}' permission")
 
-        ic({"user_id": user_id, "shop_id": shop_id, "role": role})
         return {"user_id": user_id, "shop_id": shop_id, "role": role}
 
     return dependency

@@ -149,19 +149,15 @@ class ShopService(BaseServiceModel):
     async def update(self, data:UpdateShopSchema, user_id:str)-> dict | None:
         ic("Update service started")
         
-        # If visible_online is True (or unchanged but is True), validate hours and delivery
-        is_online = data.visible_online
-        if is_online is None:
-            # We can fetch the current online status
-            is_online = await self.shop_repo_obj.is_shop_visible_online(data.id)
-
-        if is_online:
+        # Only validate hours and delivery when explicitly setting visible_online=True
+        is_turning_online = data.visible_online is True
+        if is_turning_online:
             payload_hours_count = len(data.operating_hours) if data.operating_hours is not None else 0
-            db_hours_count = await self.shop_repo_obj.count_operating_hours(data.id)
+            db_hours_count = await self.shop_repo_obj.count_operating_hours(data.id) if data.operating_hours is None else 0
             total_hours = payload_hours_count + db_hours_count
 
             payload_delivery_count = len(data.delivery_options) if data.delivery_options is not None else 0
-            db_delivery_count = await self.shop_repo_obj.count_delivery_options(data.id)
+            db_delivery_count = await self.shop_repo_obj.count_delivery_options(data.id) if data.delivery_options is None else 0
             total_delivery = payload_delivery_count + db_delivery_count
 
             if total_hours == 0 or total_delivery == 0:

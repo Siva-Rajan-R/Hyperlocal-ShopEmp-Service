@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List,Optional
+from typing import List,Optional,Any
 from core.data_formats.typ_dict.shop_typdict import ShopAddressTypDict,ShopBusinessInfoTypDict
 from datetime import datetime
 
@@ -64,8 +64,8 @@ class ShopGetResponseSchema(BaseModel):
 class OperatingHoursResponseSchema(BaseModel):
     id: int
     shop_id: str
-    open_at: datetime
-    close_at: datetime
+    open_at: Any
+    close_at: Any
     day: str
 
 class DeliveryResponseSchema(BaseModel):

@@ -41,8 +41,8 @@ class ShopOperatingHours(BASE):
     __tablename__="shop_operating_hours"
     id=Column(BigInteger,primary_key=True,autoincrement=True)
     shop_id=Column(String,ForeignKey("shops.id", ondelete="CASCADE"),nullable=False)
-    open_at=Column(Time(timezone=True),nullable=False)
-    close_at=Column(Time(timezone=True),nullable=False)
+    open_at=Column(Time(timezone=False),nullable=False)
+    close_at=Column(Time(timezone=False),nullable=False)
     day=Column(String,nullable=False)
 
     shop = relationship("Shops", back_populates="operating_hours")

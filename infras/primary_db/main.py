@@ -49,7 +49,11 @@ async def init_shop_employee_pg_db():
                 # employees columns
                 "ALTER TABLE employees ADD COLUMN IF NOT EXISTS department VARCHAR;",
                 "ALTER TABLE employees ADD COLUMN IF NOT EXISTS added_by VARCHAR;",
-                "ALTER TABLE employees ADD COLUMN IF NOT EXISTS additional_infos JSONB;"
+                "ALTER TABLE employees ADD COLUMN IF NOT EXISTS additional_infos JSONB;",
+                
+                # shop_operating_hours column timezone conversions
+                "ALTER TABLE shop_operating_hours ALTER COLUMN open_at TYPE TIME WITHOUT TIME ZONE USING open_at::time without time zone;",
+                "ALTER TABLE shop_operating_hours ALTER COLUMN close_at TYPE TIME WITHOUT TIME ZONE USING close_at::time without time zone;"
             ]
             for query in migration_queries:
                 try:

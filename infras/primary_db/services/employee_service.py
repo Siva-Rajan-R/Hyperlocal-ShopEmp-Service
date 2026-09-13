@@ -1,7 +1,7 @@
 from core.utils.user_context import get_activity_log_user_info
 from icecream import ic
-from ..repos.employee_repo import EmployeeRepo
-from ..models.shop_model import Shops
+from infras.primary_db.repos.employee_repo import EmployeeRepo
+from infras.primary_db.models.shop_model import Shops
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
 from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema
@@ -112,8 +112,8 @@ class EmployeeService(BaseServiceModel):
         res=await self.employee_repo_obj.create(data=data_toadd)
         if res:
             try:
-                from ...read_db.services.employee_service import ReadDbEmployeeService
-                from ...read_db.models.employee_model import ReadDbEmployeeCreateModel
+                from infras.read_db.services.employee_service import ReadDbEmployeeService
+                from infras.read_db.models.employee_model import ReadDbEmployeeCreateModel
                 mongo_payload = ReadDbEmployeeCreateModel(
                     employee_id=res["id"],
                     user_id=res["user_id"],
@@ -172,8 +172,8 @@ class EmployeeService(BaseServiceModel):
         res=await self.employee_repo_obj.update(data=data_toupdate)
         if res:
             try:
-                from ...read_db.services.employee_service import ReadDbEmployeeService
-                from ...read_db.models.employee_model import ReadDbEmployeeUpdateModel
+                from infras.read_db.services.employee_service import ReadDbEmployeeService
+                from infras.read_db.models.employee_model import ReadDbEmployeeUpdateModel
                 mongo_update = ReadDbEmployeeUpdateModel(
                     name=res.get("name"),
                     role=res.get("role"),
@@ -226,7 +226,7 @@ class EmployeeService(BaseServiceModel):
         res=await self.employee_repo_obj.delete(data=data)
         if res:
             try:
-                from ...read_db.services.employee_service import ReadDbEmployeeService
+                from infras.read_db.services.employee_service import ReadDbEmployeeService
                 await ReadDbEmployeeService(
                     conditions={"employee_id": data.id, "shop_id": data.shop_id}
                 ).delete()
@@ -247,7 +247,7 @@ class EmployeeService(BaseServiceModel):
 
     async def get(self,data:GetAllEmployeesSchema)-> dict:
         try:
-            from ...read_db.services.employee_service import ReadDbEmployeeService
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
             read_service = ReadDbEmployeeService(payload=None, conditions={})
             res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset)
         except Exception as e:
@@ -270,7 +270,7 @@ class EmployeeService(BaseServiceModel):
 
     async def getby_id(self,data:GetEmployeeByIdSchema)-> dict | None:
         try:
-            from ...read_db.services.employee_service import ReadDbEmployeeService
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
             read_service = ReadDbEmployeeService(payload=None, conditions={"employee_id": data.id, "shop_id": data.shop_id})
             res = await read_service.get_one(queries={"employee_id": data.id, "shop_id": data.shop_id})
         except Exception as e:
@@ -285,7 +285,7 @@ class EmployeeService(BaseServiceModel):
 
     async def getby_shopid(self,data:GetEmployeeByShopIdSchema)-> dict:
         try:
-            from ...read_db.services.employee_service import ReadDbEmployeeService
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
             read_service = ReadDbEmployeeService(payload=None, conditions={})
             if data.query:
                 res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset)
@@ -332,8 +332,8 @@ class EmployeeService(BaseServiceModel):
         employee_dict = dict(employee_data)
         
         # 2. Fetch email/mobile from MongoDB
-        from ...read_db.services.employee_service import ReadDbEmployeeService
-        from ...read_db.models.employee_model import ReadDbEmployeeUpdateModel
+        from infras.read_db.services.employee_service import ReadDbEmployeeService
+        from infras.read_db.models.employee_model import ReadDbEmployeeUpdateModel
         
         read_emp_service = ReadDbEmployeeService(payload=None, conditions={})
         mongo_emp = await read_emp_service.get_one(queries={"employee_id": employee_id, "shop_id": shop_id})

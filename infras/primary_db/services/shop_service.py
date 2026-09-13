@@ -1,8 +1,8 @@
 from core.utils.user_context import get_activity_log_user_info
-from ..repos.shop_repo import ShopRepo
+from infras.primary_db.repos.shop_repo import ShopRepo
 from sqlalchemy import select,update,delete,or_,and_,func,String
 import math
-from .employee_service import EmployeeService
+from infras.primary_db.services.employee_service import EmployeeService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
 from schemas.v1.request_schemas.shop_schemas import CreateShopSchema,UpdateShopSchema,GetAllShopsSchema,GetShopByIdSchema,DeleteShopSchema,GetShopByUserIdSchema,VerifyShoSchema,ShopFollowerSchema,GetBulkShopsByIdSchema,GetGeofencedShopsSchema
 from schemas.v1.request_schemas.operating_hours_schemas import CreateOperatingHoursSchema, UpdateOperatingHoursSchema
@@ -10,7 +10,8 @@ from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema, Up
 from schemas.v1.request_schemas.announcement_schemas import CreateAnnouncementSchema, UpdateAnnouncementSchema
 from models.service_models.base_service_model import BaseServiceModel
 from core.decorators.error_handler_dec import catch_errors
-from ..models.employee_model import Employees
+from infras.primary_db.models.employee_model import Employees
+from infras.primary_db.models.shop_model import ShopOperatingHours, ShopDelivery
 from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -65,8 +66,8 @@ class ShopService(BaseServiceModel):
             
             # Sync to MongoDB
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
-                from ...read_db.models.shop_model import ReadDbShopCreateModel
+                from infras.read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.models.shop_model import ReadDbShopCreateModel
                 
                 def make_serializable(item):
                     if not item:
@@ -178,7 +179,6 @@ class ShopService(BaseServiceModel):
 
             hours_list = []
             if data.operating_hours is not None:
-                from ..models.shop_model import ShopOperatingHours
                 await self.session.execute(delete(ShopOperatingHours).where(ShopOperatingHours.shop_id == data.id))
                 for hr in data.operating_hours:
                     h_res = await self.shop_repo_obj.add_operating_hours(shop_id=data.id, data=hr)
@@ -186,7 +186,6 @@ class ShopService(BaseServiceModel):
                         hours_list.append(dict(h_res))
             delivery_list = []
             if data.delivery_options is not None:
-                from ..models.shop_model import ShopDelivery
                 await self.session.execute(delete(ShopDelivery).where(ShopDelivery.shop_id == data.id))
                 for deliv in data.delivery_options:
                     d_res = await self.shop_repo_obj.add_delivery_options(shop_id=data.id, data=deliv)
@@ -195,8 +194,8 @@ class ShopService(BaseServiceModel):
 
             # Sync to MongoDB
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
-                from ...read_db.models.shop_model import ReadDbShopUpdateModel
+                from infras.read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.models.shop_model import ReadDbShopUpdateModel
 
                 def make_serializable(item):
                     if not item:
@@ -247,7 +246,7 @@ class ShopService(BaseServiceModel):
         res=await self.shop_repo_obj.delete(data=data_todel)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 await ReadDbShopService(conditions={"id": data.shop_id}).delete()
             except Exception as e:
                 ic(f"Failed to sync shop deletion to MongoDB: {e}")
@@ -258,7 +257,7 @@ class ShopService(BaseServiceModel):
 
     async def get(self,data:GetAllShopsSchema)-> List[dict] | list:
         try:
-            from ...read_db.services.shop_service import ReadDbShopService
+            from infras.read_db.services.shop_service import ReadDbShopService
             read_service = ReadDbShopService(payload=None, conditions={})
             res = await read_service.get(query=data.query, limit=data.limit, offset=data.offset, visible_online=data.visible_online)
         except Exception as e:
@@ -278,7 +277,7 @@ class ShopService(BaseServiceModel):
 
     async def getby_id(self,data:GetShopByIdSchema)-> dict | None:
         try:
-            from ...read_db.services.shop_service import ReadDbShopService
+            from infras.read_db.services.shop_service import ReadDbShopService
             read_service = ReadDbShopService(payload=None, conditions={"id": data.shop_id})
             res = await read_service.get_one(queries={"id": data.shop_id})
         except Exception as e:
@@ -298,8 +297,8 @@ class ShopService(BaseServiceModel):
     
     async def getby_userid(self,data:GetShopByUserIdSchema)-> List[dict] | list:
         try:
-            from ...read_db.services.shop_service import ReadDbShopService
-            from ...read_db.services.employee_service import ReadDbEmployeeService
+            from infras.read_db.services.shop_service import ReadDbShopService
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
             
             read_service = ReadDbShopService(payload=None, conditions={})
             owned_shops = await read_service.getby_queries(queries={"user_id": data.user_id}) or []
@@ -333,7 +332,7 @@ class ShopService(BaseServiceModel):
 
     async def get_bulk_by_ids(self, data: GetBulkShopsByIdSchema) -> List[dict]:
         try:
-            from ...read_db.services.shop_service import ReadDbShopService
+            from infras.read_db.services.shop_service import ReadDbShopService
             read_service = ReadDbShopService(payload=None, conditions={})
             res = await read_service.getby_queries(queries={"id": {"$in": data.shop_ids}})
         except Exception as e:
@@ -364,7 +363,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.add_operating_hours(shop_id=shop_id, data=data)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 def make_serializable(item):
                     if not item:
                         return item
@@ -388,7 +387,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.update_operating_hours(hours_id=hours_id, data=data)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 def make_serializable(item):
                     if not item:
                         return item
@@ -418,7 +417,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.delete_operating_hours(hours_id=hours_id)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 await ReadDbShopService().delete_operating_hours(hours_id=hours_id)
             except Exception as e:
                 ic(f"Failed to sync operating hours deletion to MongoDB: {e}")
@@ -429,7 +428,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.add_delivery_options(shop_id=shop_id, data=data)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 def make_serializable(item):
                     if not item:
                         return item
@@ -453,7 +452,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.update_delivery_options(delivery_id=delivery_id, data=data)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 def make_serializable(item):
                     if not item:
                         return item
@@ -483,7 +482,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.delete_delivery_options(delivery_id=delivery_id)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 await ReadDbShopService().delete_delivery_options(delivery_id=delivery_id)
             except Exception as e:
                 ic(f"Failed to sync delivery options deletion to MongoDB: {e}")
@@ -494,7 +493,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.add_announcement(shop_id=shop_id, data=data)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 def make_serializable(item):
                     if not item:
                         return item
@@ -518,7 +517,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.update_announcement(data=data,shop_id=shop_id)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 def make_serializable(item):
                     if not item:
                         return item
@@ -538,7 +537,7 @@ class ShopService(BaseServiceModel):
         res = await self.shop_repo_obj.delete_announcement(announcement_id=announcement_id,shop_id=shop_id)
         if res:
             try:
-                from ...read_db.services.shop_service import ReadDbShopService
+                from infras.read_db.services.shop_service import ReadDbShopService
                 await ReadDbShopService().delete_announcement(announcement_id=announcement_id)
             except Exception as e:
                 ic(f"Failed to sync announcement deletion to MongoDB: {e}")

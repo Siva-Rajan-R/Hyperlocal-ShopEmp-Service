@@ -1,4 +1,4 @@
-from ..models.employee_model import Employees
+from infras.primary_db.models.employee_model import Employees
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from sqlalchemy.dialects.postgresql import insert
 from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
@@ -172,7 +172,7 @@ class EmployeeRepo(BaseRepoModel):
                 pass
 
         employee_stmt=(
-            select(*self.select_cols, created_at)
+            select(*self.select_cols)
             .where(and_(*conds))
             .order_by(Employees.created_at.desc())
             .limit(limit=data.limit)
@@ -184,10 +184,8 @@ class EmployeeRepo(BaseRepoModel):
     
 
     async def getby_id(self,data:GetEmployeeByIdSchema)-> dict | None:
-        created_at=func.date(func.timezone(data.timezone.value,Employees.created_at))
-
         employee_stmt=(
-            select(*self.select_cols, created_at)
+            select(*self.select_cols)
             .where(
                 Employees.shop_id==data.shop_id,
                 Employees.id==data.id,
@@ -233,7 +231,7 @@ class EmployeeRepo(BaseRepoModel):
                 pass
 
         employee_stmt=(
-            select(*self.select_cols, Employees.created_at)
+            select(*self.select_cols)
             .where(and_(*conds))
             .order_by(Employees.created_at.desc())
             .limit(limit=data.limit)

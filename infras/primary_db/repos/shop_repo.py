@@ -1,4 +1,4 @@
-from ..models.shop_model import Shops, ShopOperatingHours, ShopDelivery, ShopAnnouncements, ShopFollowers
+from infras.primary_db.models.shop_model import Shops, ShopOperatingHours, ShopDelivery, ShopAnnouncements, ShopFollowers
 from sqlalchemy import select,update,delete,or_,and_,func,String
 from sqlalchemy.dialects.postgresql import insert
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
@@ -10,7 +10,7 @@ from models.repo_models.base_repo_model import BaseRepoModel
 from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_transaction
 from core.decorators.error_handler_dec import catch_errors
 from hyperlocal_platform.core.models.req_res_models import SuccessResponseTypDict,ErrorResponseTypDict,BaseResponseTypDict
-from ..models.employee_model import Employees
+from infras.primary_db.models.employee_model import Employees
 from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from sqlalchemy.ext.asyncio import AsyncSession

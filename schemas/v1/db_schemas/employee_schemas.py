@@ -14,7 +14,7 @@ class CreateEmployeeDbSchema(BaseModel):
     shop_id:str
     role:EmployeeRoleEnums
     joined_date:date
-    department:Optional[EmployeeDepartmentEnums]=None
+    department:Optional[str]=None
     accepted:bool
     additional_infos:Optional[EmployeeOptionalFieldsSchema]={}
 
@@ -25,6 +25,6 @@ class UpdateEmployeeDbSchema(BaseModel):
     name:Optional[str]=None
     role:Optional[EmployeeRoleEnums]=None
     joined_date:Optional[date]=None
-    department:Optional[EmployeeDepartmentEnums]=None
+    department:Optional[str]=None
     accepted:Optional[bool]=None
     additional_infos:Optional[dict]={}

@@ -14,7 +14,7 @@ class EmployeeCreateResponseSchema(BaseModel):
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
-    department:Optional[EmployeeDepartmentEnums]=None
+    department:Optional[str]=None
     accepted:bool
     created_at:datetime
     joined_date:date
@@ -29,7 +29,7 @@ class EmployeeUpdateResponseSchema(BaseModel):
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
-    department:Optional[EmployeeDepartmentEnums]=None
+    department:Optional[str]=None
     accepted:bool
     created_at:datetime
     updated_at:datetime
@@ -45,7 +45,7 @@ class EmployeeDeleteResponseSchema(BaseModel):
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
-    department:Optional[EmployeeDepartmentEnums]=None
+    department:Optional[str]=None
     accepted:bool
     created_at:datetime
     updated_at:datetime
@@ -63,7 +63,7 @@ class EmployeeGetResponseSchema(BaseModel):
     email:EmailStr
     mobile_number:str
     role:EmployeeRoleEnums
-    department:Optional[EmployeeDepartmentEnums]=None
+    department:Optional[str]=None
     accepted:bool
     created_at:datetime
     updated_at:datetime

@@ -163,73 +163,67 @@ async def get_all(session:PG_ASYNC_SESSION,data:GetAllShopsSchema=Depends()):
 
 
 # --- Operating Hours Routes ---
-# @router.post('/{shop_id}/operating-hours')
-# async def add_operating_hours(
-#     shop_id: str,
-#     data: CreateOperatingHoursSchema,
-#     session: PG_ASYNC_SESSION,
-#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-# ):
-#     return await HandleShopRequest(session=session).add_operating_hours(shop_id=shop_id, data=data)
+@router.post('/{shop_id}/operating-hours')
+async def add_operating_hours(
+    shop_id: str,
+    data: CreateOperatingHoursSchema,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).add_operating_hours(shop_id=shop_id, data=data)
 
-# @router.get('/{shop_id}/operating-hours')
-# async def get_operating_hours(
-#     shop_id: str,
-#     session: PG_ASYNC_SESSION
-# ):
-#     return await HandleShopRequest(session=session).get_operating_hours(shop_id=shop_id)
+@router.get('/{shop_id}/operating-hours')
+async def get_operating_hours(
+    shop_id: str,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).get_operating_hours(shop_id=shop_id)
 
-# @router.put('/operating-hours/{hours_id}')
-# async def update_operating_hours(
-#     hours_id: int,
-#     data: UpdateOperatingHoursSchema,
-#     session: PG_ASYNC_SESSION,
-#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-# ):
-#     return await HandleShopRequest(session=session).update_operating_hours(hours_id=hours_id, data=data)
+@router.put('/operating-hours/{hours_id}')
+async def update_operating_hours(
+    hours_id: int,
+    data: UpdateOperatingHoursSchema,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).update_operating_hours(hours_id=hours_id, data=data)
 
-# @router.delete('/operating-hours/{hours_id}')
-# async def delete_operating_hours(
-#     hours_id: int,
-#     session: PG_ASYNC_SESSION,
-#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-# ):
-#     return await HandleShopRequest(session=session).delete_operating_hours(hours_id=hours_id)
+@router.delete('/operating-hours/{hours_id}')
+async def delete_operating_hours(
+    hours_id: int,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).delete_operating_hours(hours_id=hours_id)
 
 
-# # --- Delivery Routes ---
-# @router.post('/{shop_id}/delivery')
-# async def add_delivery_options(
-#     shop_id: str,
-#     data: CreateDeliverySchema,
-#     session: PG_ASYNC_SESSION,
-#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-# ):
-#     return await HandleShopRequest(session=session).add_delivery_options(shop_id=shop_id, data=data)
+# --- Delivery Routes ---
+@router.post('/{shop_id}/delivery')
+async def add_delivery_options(
+    shop_id: str,
+    data: CreateDeliverySchema,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).add_delivery_options(shop_id=shop_id, data=data)
 
-# @router.get('/{shop_id}/delivery')
-# async def get_delivery_options(
-#     shop_id: str,
-#     session: PG_ASYNC_SESSION
-# ):
-#     return await HandleShopRequest(session=session).get_delivery_options(shop_id=shop_id)
+@router.get('/{shop_id}/delivery')
+async def get_delivery_options(
+    shop_id: str,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).get_delivery_options(shop_id=shop_id)
 
-# @router.put('/delivery/{delivery_id}')
-# async def update_delivery_options(
-#     delivery_id: int,
-#     data: UpdateDeliverySchema,
-#     session: PG_ASYNC_SESSION,
-#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-# ):
-#     return await HandleShopRequest(session=session).update_delivery_options(delivery_id=delivery_id, data=data)
+@router.put('/delivery/{delivery_id}')
+async def update_delivery_options(
+    delivery_id: int,
+    data: UpdateDeliverySchema,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).update_delivery_options(delivery_id=delivery_id, data=data)
 
-# @router.delete('/delivery/{delivery_id}')
-# async def delete_delivery_options(
-#     delivery_id: int,
-#     session: PG_ASYNC_SESSION,
-#     auth_data: Annotated[dict, Depends(require_permission("update_shop"))]
-# ):
-#     return await HandleShopRequest(session=session).delete_delivery_options(delivery_id=delivery_id)
+@router.delete('/delivery/{delivery_id}')
+async def delete_delivery_options(
+    delivery_id: int,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).delete_delivery_options(delivery_id=delivery_id)
 
 
 # --- Announcements Routes ---

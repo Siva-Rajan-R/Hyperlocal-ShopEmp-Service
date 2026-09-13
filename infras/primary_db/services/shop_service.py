@@ -181,13 +181,17 @@ class ShopService(BaseServiceModel):
             res_dict['image_urls'] = []
 
             hours_list = []
-            if data.operating_hours:
+            if data.operating_hours is not None:
+                from ..models.shop_model import ShopOperatingHours
+                await self.session.execute(delete(ShopOperatingHours).where(ShopOperatingHours.shop_id == data.id))
                 for hr in data.operating_hours:
                     h_res = await self.shop_repo_obj.add_operating_hours(shop_id=data.id, data=hr)
                     if h_res:
                         hours_list.append(dict(h_res))
             delivery_list = []
-            if data.delivery_options:
+            if data.delivery_options is not None:
+                from ..models.shop_model import ShopDelivery
+                await self.session.execute(delete(ShopDelivery).where(ShopDelivery.shop_id == data.id))
                 for deliv in data.delivery_options:
                     d_res = await self.shop_repo_obj.add_delivery_options(shop_id=data.id, data=deliv)
                     if d_res:

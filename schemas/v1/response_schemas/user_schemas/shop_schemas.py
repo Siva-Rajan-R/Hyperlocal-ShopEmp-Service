@@ -72,9 +72,14 @@ class DeliveryResponseSchema(BaseModel):
     id: int
     shop_id: str
     type: str
-    speed: str
-    free_shipping_amount: float
-    delivery_by: str
+    speed: Optional[str] = ""
+    free_shipping_amount: Optional[float] = 0.0
+    min_order_amount: Optional[float] = 0.0
+    delivery_charge: Optional[float] = 0.0
+    charge_per_km: Optional[float] = 0.0
+    radius: Optional[float] = 0.0
+    delivery_by: Optional[str] = "PARTNERS"
+    enabled: Optional[bool] = True
 
 class AnnouncementResponseSchema(BaseModel):
     id: int

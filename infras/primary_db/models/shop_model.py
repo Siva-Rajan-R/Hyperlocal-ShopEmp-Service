@@ -53,9 +53,14 @@ class ShopDelivery(BASE):
     id=Column(BigInteger,primary_key=True,autoincrement=True)
     shop_id=Column(String,ForeignKey("shops.id", ondelete="CASCADE"),nullable=False)
     type=Column(String,nullable=False)
-    speed=Column(String,nullable=False)
-    free_shipping_amount=Column(Float,nullable=False)
-    delivery_by=Column(String,nullable=False)
+    speed=Column(String,nullable=True,default="")
+    free_shipping_amount=Column(Float,nullable=True,default=0.0)
+    min_order_amount=Column(Float,nullable=True,default=0.0)
+    delivery_charge=Column(Float,nullable=True,default=0.0)
+    charge_per_km=Column(Float,nullable=True,default=0.0)
+    radius=Column(Float,nullable=True,default=0.0)
+    delivery_by=Column(String,nullable=True,default="PARTNERS")
+    enabled=Column(Boolean,nullable=True,default=True)
 
     shop = relationship("Shops", back_populates="delivery_options")
 

@@ -301,7 +301,7 @@ class ShopRepo(BaseRepoModel):
     # --- Delivery Options CRUD ---
     @start_db_transaction
     async def add_delivery_options(self, shop_id: str, data: CreateDeliverySchema) -> dict | None:
-        values = data.model_dump()
+        values = data.model_dump(mode="json", exclude_none=True)
         values["shop_id"] = shop_id
         stmt = insert(ShopDelivery).values(**values).returning(
             ShopDelivery.id,
@@ -309,7 +309,12 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.type,
             ShopDelivery.speed,
             ShopDelivery.free_shipping_amount,
-            ShopDelivery.delivery_by
+            ShopDelivery.min_order_amount,
+            ShopDelivery.delivery_charge,
+            ShopDelivery.charge_per_km,
+            ShopDelivery.radius,
+            ShopDelivery.delivery_by,
+            ShopDelivery.enabled
         )
         res = (await self.session.execute(stmt)).mappings().one_or_none()
         return res
@@ -321,21 +326,31 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.type,
             ShopDelivery.speed,
             ShopDelivery.free_shipping_amount,
-            ShopDelivery.delivery_by
+            ShopDelivery.min_order_amount,
+            ShopDelivery.delivery_charge,
+            ShopDelivery.charge_per_km,
+            ShopDelivery.radius,
+            ShopDelivery.delivery_by,
+            ShopDelivery.enabled
         ).where(ShopDelivery.shop_id == shop_id)
         res = (await self.session.execute(stmt)).mappings().all()
         return res
 
     @start_db_transaction
     async def update_delivery_options(self, delivery_id: int, data: UpdateDeliverySchema) -> dict | None:
-        values = data.model_dump(exclude={"id"}, exclude_unset=True, exclude_none=True)
+        values = data.model_dump(mode="json", exclude={"id"}, exclude_unset=True, exclude_none=True)
         stmt = update(ShopDelivery).where(ShopDelivery.id == delivery_id).values(**values).returning(
             ShopDelivery.id,
             ShopDelivery.shop_id,
             ShopDelivery.type,
             ShopDelivery.speed,
             ShopDelivery.free_shipping_amount,
-            ShopDelivery.delivery_by
+            ShopDelivery.min_order_amount,
+            ShopDelivery.delivery_charge,
+            ShopDelivery.charge_per_km,
+            ShopDelivery.radius,
+            ShopDelivery.delivery_by,
+            ShopDelivery.enabled
         )
         res = (await self.session.execute(stmt)).mappings().one_or_none()
         return res
@@ -348,7 +363,12 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.type,
             ShopDelivery.speed,
             ShopDelivery.free_shipping_amount,
-            ShopDelivery.delivery_by
+            ShopDelivery.min_order_amount,
+            ShopDelivery.delivery_charge,
+            ShopDelivery.charge_per_km,
+            ShopDelivery.radius,
+            ShopDelivery.delivery_by,
+            ShopDelivery.enabled
         )
         res = (await self.session.execute(stmt)).mappings().one_or_none()
         return res

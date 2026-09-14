@@ -19,6 +19,7 @@ async def shop_employee_service_lifespan(app:FastAPI):
         ic("Starting Shop-Employee service...")
         await init_shop_employee_pg_db()
         await init_infra_db()
+        print("[SHOP-EMP SERVICE] ✅ Database & Saga DB initialized. Ready for operations.")
         asyncio.create_task(worker())
         yield
 

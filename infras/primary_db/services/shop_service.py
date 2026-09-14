@@ -36,7 +36,18 @@ class ShopService(BaseServiceModel):
             )
 
         shop_id:str=generate_uuid()
-        db_payload = data.model_dump(mode="json", exclude={"operating_hours", "delivery_options"})
+        db_payload = data.model_dump(mode="json", exclude={"operating_hours", "delivery_options", "visibility_only", "is_ordering_enabled"})
+        
+        # Resolve visibility_only and is_ordering_enabled into additional_infos
+        add_infos = db_payload.get("additional_infos") or {}
+        vis_only = data.visibility_only if data.visibility_only is not None else add_infos.get("visibility_only", False)
+        ord_enabled = data.is_ordering_enabled if data.is_ordering_enabled is not None else add_infos.get("is_ordering_enabled", not vis_only)
+        if vis_only:
+            ord_enabled = False
+        add_infos["visibility_only"] = vis_only
+        add_infos["is_ordering_enabled"] = ord_enabled
+        db_payload["additional_infos"] = add_infos
+
         data_toadd=CreateShopDbSchema(
             **db_payload,
             id=shop_id,
@@ -49,6 +60,8 @@ class ShopService(BaseServiceModel):
             # Map categories and datas
             cats = res_dict.get('categories', [])
             res_dict['category'] = cats[0] if cats else ''
+            res_dict['visibility_only'] = vis_only
+            res_dict['is_ordering_enabled'] = ord_enabled
             res_dict['image_urls'] = []
 
             hours_list = []
@@ -93,8 +106,10 @@ class ShopService(BaseServiceModel):
                     address=res_dict.get("address") or {},
                     banner_url=res_dict.get("banner_url"),
                     logo_url=res_dict.get("logo_url"),
-                    additional_infos=res_dict.get("additional_infos") or {},
+                    additional_infos=add_infos,
                     visible_online=res_dict.get("visible_online", False),
+                    visibility_only=vis_only,
+                    is_ordering_enabled=ord_enabled,
                     operating_hours=[make_serializable(h) for h in hours_list],
                     delivery_options=[make_serializable(d) for d in delivery_list],
                     announcements=[]
@@ -167,7 +182,22 @@ class ShopService(BaseServiceModel):
                     detail="Shop operating hours and delivery are mandatory when shop is visible online. Please add them first."
                 )
 
-        db_payload = data.model_dump(mode="json", exclude={"operating_hours", "delivery_options"}, exclude_unset=True, exclude_none=True)
+        db_payload = data.model_dump(mode="json", exclude={"operating_hours", "delivery_options", "visibility_only", "is_ordering_enabled"}, exclude_unset=True, exclude_none=True)
+        
+        # Handle visibility_only and is_ordering_enabled in additional_infos
+        if data.visibility_only is not None or data.is_ordering_enabled is not None:
+            existing_shop = await self.shop_repo_obj.get_shop_with_relations(data.id)
+            existing_add = (existing_shop.get("additional_infos") if existing_shop else {}) or {}
+            if "additional_infos" in db_payload:
+                existing_add.update(db_payload["additional_infos"])
+            if data.visibility_only is not None:
+                existing_add["visibility_only"] = data.visibility_only
+                if data.visibility_only:
+                    existing_add["is_ordering_enabled"] = False
+            if data.is_ordering_enabled is not None and not existing_add.get("visibility_only"):
+                existing_add["is_ordering_enabled"] = data.is_ordering_enabled
+            db_payload["additional_infos"] = existing_add
+
         data_toupdate=UpdateShopDbSchema(**db_payload, user_id=user_id)
         ic(data_toupdate)
         res=await self.shop_repo_obj.update(data=data_toupdate)
@@ -175,6 +205,9 @@ class ShopService(BaseServiceModel):
             res_dict = dict(res)
             cats = res_dict.get('categories', [])
             res_dict['category'] = cats[0] if cats else ''
+            add_infos = res_dict.get('additional_infos') or {}
+            res_dict['visibility_only'] = add_infos.get('visibility_only', False)
+            res_dict['is_ordering_enabled'] = add_infos.get('is_ordering_enabled', not res_dict['visibility_only'])
             res_dict['image_urls'] = []
 
             hours_list = []
@@ -218,19 +251,25 @@ class ShopService(BaseServiceModel):
                     banner_url=res_dict.get("banner_url"),
                     logo_url=res_dict.get("logo_url"),
                     additional_infos=res_dict.get("additional_infos"),
-                    visible_online=res_dict.get("visible_online")
+                    visible_online=res_dict.get("visible_online"),
+                    visibility_only=res_dict.get("visibility_only"),
+                    is_ordering_enabled=res_dict.get("is_ordering_enabled")
                 )
                 await ReadDbShopService(
                     payload=mongo_update,
                     conditions={"id": data.id}
                 ).update()
 
-                if hours_list:
-                    for hr in hours_list:
-                        await ReadDbShopService().add_operating_hours(shop_id=data.id, hours=make_serializable(hr))
-                if delivery_list:
-                    for dl in delivery_list:
-                        await ReadDbShopService().add_delivery_options(shop_id=data.id, delivery=make_serializable(dl))
+                if data.operating_hours is not None:
+                    await ReadDbShopService().set_operating_hours(
+                        shop_id=data.id,
+                        hours_list=[make_serializable(hr) for hr in hours_list]
+                    )
+                if data.delivery_options is not None:
+                    await ReadDbShopService().set_delivery_options(
+                        shop_id=data.id,
+                        delivery_list=[make_serializable(dl) for dl in delivery_list]
+                    )
             except Exception as e:
                 ic(f"Failed to sync shop update to MongoDB: {e}")
 
@@ -285,13 +324,31 @@ class ShopService(BaseServiceModel):
             res = None
 
         if not res:
-            res=await self.shop_repo_obj.getby_id(data=data)
-            if res:
-                res = dict(res)
-                cats = res.get('categories', [])
-                res['category'] = cats[0] if cats else ''
-                res['datas'] = res.pop('additional_infos', {}) or {}
-                res['image_urls'] = []
+            res=await self.shop_repo_obj.get_shop_with_relations(shop_id=data.shop_id)
+            if not res:
+                res=await self.shop_repo_obj.getby_id(data=data)
+                if res:
+                    res = dict(res)
+                    cats = res.get('categories', [])
+                    res['category'] = cats[0] if cats else ''
+                    res['datas'] = res.pop('additional_infos', {}) or {}
+                    res['image_urls'] = []
+        if res:
+            add_infos = res.get('additional_infos') or res.get('datas') or {}
+            vis_only = res.get('visibility_only', add_infos.get('visibility_only', False))
+            res['visibility_only'] = bool(vis_only)
+            res['is_ordering_enabled'] = bool(res.get('is_ordering_enabled', add_infos.get('is_ordering_enabled', not vis_only)))
+            if vis_only:
+                res['is_ordering_enabled'] = False
+            hours = res.get("operating_hours") or []
+            deliv = res.get("delivery_options") or []
+            vis_online = bool(res.get("visible_online", False))
+            has_hours = len(hours) > 0
+            has_deliv = len(deliv) > 0
+            res['has_operating_hours'] = has_hours
+            res['has_delivery_options'] = has_deliv
+            res['is_digital_store_configured'] = bool(has_hours or has_deliv or vis_online)
+            res['can_show_digital_store_dashboard'] = bool(has_hours or has_deliv or vis_online)
         return res
     
     
@@ -326,8 +383,25 @@ class ShopService(BaseServiceModel):
                 for r in res:
                     cats = r.get('categories', [])
                     r['category'] = cats[0] if cats else ''
-                    r['datas'] = r.pop('additional_infos', {}) or {}
+                    r['datas'] = r.get('additional_infos', {}) or {}
                     r['image_urls'] = []
+        if res:
+            for r in res:
+                add_infos = r.get('additional_infos') or r.get('datas') or {}
+                vis_only = r.get('visibility_only', add_infos.get('visibility_only', False))
+                r['visibility_only'] = bool(vis_only)
+                r['is_ordering_enabled'] = bool(r.get('is_ordering_enabled', add_infos.get('is_ordering_enabled', not vis_only)))
+                if vis_only:
+                    r['is_ordering_enabled'] = False
+                hours = r.get("operating_hours") or []
+                deliv = r.get("delivery_options") or []
+                vis_online = bool(r.get("visible_online", False))
+                has_hours = len(hours) > 0
+                has_deliv = len(deliv) > 0
+                r['has_operating_hours'] = has_hours
+                r['has_delivery_options'] = has_deliv
+                r['is_digital_store_configured'] = bool(has_hours or has_deliv or vis_online)
+                r['can_show_digital_store_dashboard'] = bool(has_hours or has_deliv or vis_online)
         return res
 
     async def get_bulk_by_ids(self, data: GetBulkShopsByIdSchema) -> List[dict]:
@@ -565,7 +639,18 @@ class ShopService(BaseServiceModel):
         return res
 
     async def get_geofenced_shops(self, data: GetGeofencedShopsSchema) -> List[dict]:
-        shops = await self.shop_repo_obj.get_geofenced_shops(data=data)
+        try:
+            from infras.read_db.services.shop_service import ReadDbShopService
+            read_service = ReadDbShopService(payload=None, conditions={})
+            shops = await read_service.getby_queries(queries={"visible_online": True})
+        except Exception as e:
+            ic(f"Failed to fetch geofenced shops from MongoDB: {e}")
+            shops = None
+
+        if not shops:
+            shops = await self.shop_repo_obj.get_all_online_shops()
+            if not shops:
+                shops = await self.shop_repo_obj.get_geofenced_shops(data=data)
         
         def haversine(lat1, lon1, lat2, lon2):
             R = 6371.0
@@ -575,25 +660,107 @@ class ShopService(BaseServiceModel):
             c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
             return R * c
             
-        radius_map = {
+        default_radius_map = {
+            "PICKUP_ONLY": 25.0,
             "INSTANT": 25.0,
             "STANDARD": 300.0,
-            "NATIONWIDE": float('inf'),
-            "PICKUP_ONLY": 25.0
+            "NATIONWIDE": float('inf')
         }
-        max_radius = radius_map.get(data.delivery_type.value, 25.0)
         
+        target_deliv_type = data.delivery_type.value.upper()
+        is_nationwide = (target_deliv_type == "NATIONWIDE")
+        
+        try:
+            user_lat = float(data.latitude)
+            user_lon = float(data.longitude)
+        except (ValueError, TypeError):
+            return []
+
         filtered_shops = []
         for shop in shops:
-            address = shop.get('address') or {}
-            shop_lat = address.get('latitude')
-            shop_lon = address.get('longitude')
+            if not shop:
+                continue
             
-            if shop_lat is not None and shop_lon is not None:
-                dist = haversine(data.latitude, data.longitude, shop_lat, shop_lon)
-                if dist <= max_radius:
-                    filtered_shops.append(shop)
+            # Check shop online visibility
+            if not shop.get("visible_online"):
+                continue
+                
+            delivery_options = shop.get("delivery_options") or []
+            matched_delivery = None
+            for d in delivery_options:
+                if not d:
+                    continue
+                d_type = (d.get("type") or "").upper()
+                d_enabled = d.get("enabled")
+                if d_type == target_deliv_type and d_enabled is not False:
+                    matched_delivery = d
+                    break
                     
+            if not matched_delivery:
+                continue
+                
+            # Extract shop coordinates safely
+            address = shop.get("address") or {}
+            shop_lat_raw = address.get("latitude") if address.get("latitude") is not None else address.get("lat")
+            shop_lon_raw = address.get("longitude") if address.get("longitude") is not None else address.get("lng")
+            
+            shop_lat = None
+            shop_lon = None
+            if shop_lat_raw is not None and shop_lon_raw is not None:
+                try:
+                    shop_lat = float(shop_lat_raw)
+                    shop_lon = float(shop_lon_raw)
+                except (ValueError, TypeError):
+                    pass
+
+            shop_copy = dict(shop)
+            # Ensure resolved visibility_only and is_ordering_enabled
+            add_infos = shop_copy.get("additional_infos") or shop_copy.get("datas") or {}
+            vis_only = shop_copy.get("visibility_only", add_infos.get("visibility_only", False))
+            shop_copy["visibility_only"] = bool(vis_only)
+            shop_copy["is_ordering_enabled"] = bool(shop_copy.get("is_ordering_enabled", add_infos.get("is_ordering_enabled", not vis_only)))
+            if vis_only:
+                shop_copy["is_ordering_enabled"] = False
+                
+            cats = shop_copy.get("categories") or []
+            shop_copy["category"] = cats[0] if cats else ""
+
+            if is_nationwide:
+                # Nationwide delivery matches regardless of distance
+                if shop_lat is not None and shop_lon is not None:
+                    dist = haversine(user_lat, user_lon, shop_lat, shop_lon)
+                    shop_copy["distance_km"] = round(dist, 2)
+                else:
+                    shop_copy["distance_km"] = 0.0
+                filtered_shops.append(shop_copy)
+            else:
+                # Distance-based delivery
+                if shop_lat is None or shop_lon is None:
+                    continue
+                    
+                dist = haversine(user_lat, user_lon, shop_lat, shop_lon)
+                
+                # Check shop's configured radius for this delivery option
+                configured_radius = None
+                raw_radius = matched_delivery.get("radius")
+                if raw_radius is not None:
+                    try:
+                        configured_radius = float(raw_radius)
+                    except (ValueError, TypeError):
+                        pass
+                
+                if configured_radius is not None and configured_radius > 0:
+                    max_radius = configured_radius
+                else:
+                    max_radius = default_radius_map.get(target_deliv_type, 25.0)
+                    
+                if dist <= max_radius:
+                    shop_copy["distance_km"] = round(dist, 2)
+                    filtered_shops.append(shop_copy)
+                    
+        # Sort by distance (closest first)
+        filtered_shops.sort(key=lambda s: s.get("distance_km", 0.0))
+        
         start_idx = (data.offset - 1) * data.limit
         end_idx = start_idx + data.limit
         return filtered_shops[start_idx:end_idx]

@@ -16,6 +16,8 @@ class ReadDbShopCreateModel(BaseModel):
     logo_url: Optional[str] = None
     additional_infos: Optional[Dict[str, Any]] = {}  # mapped from additional_infos
     visible_online: bool = False
+    visibility_only: bool = False
+    is_ordering_enabled: bool = True
     operating_hours: List[Dict[str, Any]] = []
     delivery_options: List[Dict[str, Any]] = []
     announcements: List[Dict[str, Any]] = []
@@ -31,6 +33,8 @@ class ReadDbShopUpdateModel(BaseModel):
     logo_url: Optional[str] = None
     additional_infos: Optional[Dict[str, Any]] = None
     visible_online: Optional[bool] = None
+    visibility_only: Optional[bool] = None
+    is_ordering_enabled: Optional[bool] = None
     operating_hours: Optional[List[Dict[str, Any]]] = None
     delivery_options: Optional[List[Dict[str, Any]]] = None
     announcements: Optional[List[Dict[str, Any]]] = None

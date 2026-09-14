@@ -11,6 +11,8 @@ class ShopOptionalFieldsSchemas(BaseModel):
     emails:Optional[list]=None
     mobile_numbers:Optional[list]=None
     website:Optional[str]=None
+    visibility_only:Optional[bool]=None
+    is_ordering_enabled:Optional[bool]=None
 
 
 
@@ -24,6 +26,8 @@ class CreateShopSchema(BaseModel):
     address:ShopAddressTypDict
     additional_infos:Optional[ShopOptionalFieldsSchemas]={}
     visible_online:Optional[bool]=False
+    visibility_only:Optional[bool]=False
+    is_ordering_enabled:Optional[bool]=True
     operating_hours:Optional[List[CreateOperatingHoursSchema]]=None
     delivery_options:Optional[List[CreateDeliverySchema]]=None
 
@@ -38,6 +42,8 @@ class UpdateShopSchema(BaseModel):
     banner_url:Optional[str]=None
     additional_infos:Optional[ShopOptionalFieldsSchemas]=None
     visible_online:Optional[bool]=None
+    visibility_only:Optional[bool]=None
+    is_ordering_enabled:Optional[bool]=None
     operating_hours:Optional[List[CreateOperatingHoursSchema]]=None
     delivery_options:Optional[List[CreateDeliverySchema]]=None
 

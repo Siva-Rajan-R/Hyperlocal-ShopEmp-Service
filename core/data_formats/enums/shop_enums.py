@@ -33,9 +33,6 @@ class DeliveryTypeEnum(str, Enum):
     INSTANT = "INSTANT"
     STANDARD = "STANDARD"
     NATIONWIDE = "NATIONWIDE"
-    NORMAL = "NORMAL"
-    EXPRESS = "EXPRESS"
-    SAME_DAY = "SAME_DAY"
 
 class DeliveryByEnum(str, Enum):
     INHOUSE = "INHOUSE"

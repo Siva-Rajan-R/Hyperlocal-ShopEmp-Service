@@ -17,6 +17,96 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from icecream import ic
 from typing import List,Optional
 
+def _serialize_shop_model(shop: Shops) -> Optional[dict]:
+    if not shop:
+        return None
+    cats = shop.categories or []
+    add_infos = shop.additional_infos or {}
+    if not isinstance(add_infos, dict):
+        add_infos = {}
+    vis_only = add_infos.get("visibility_only", False)
+    ord_enabled = add_infos.get("is_ordering_enabled", not vis_only)
+    if vis_only:
+        ord_enabled = False
+
+    hours_list = []
+    if getattr(shop, "operating_hours", None):
+        for hr in shop.operating_hours:
+            hours_list.append({
+                "id": hr.id,
+                "shop_id": hr.shop_id,
+                "open_at": str(hr.open_at),
+                "close_at": str(hr.close_at),
+                "day": hr.day
+            })
+
+    delivery_list = []
+    if getattr(shop, "delivery_options", None):
+        for deliv in shop.delivery_options:
+            delivery_list.append({
+                "id": deliv.id,
+                "shop_id": deliv.shop_id,
+                "type": deliv.type,
+                "speed": deliv.speed,
+                "free_shipping_amount": deliv.free_shipping_amount,
+                "min_order_amount": deliv.min_order_amount,
+                "delivery_charge": deliv.delivery_charge,
+                "charge_per_km": deliv.charge_per_km,
+                "radius": deliv.radius,
+                "delivery_by": deliv.delivery_by,
+                "enabled": deliv.enabled
+            })
+
+    announcements_list = []
+    if getattr(shop, "announcements", None):
+        for ann in shop.announcements:
+            announcements_list.append({
+                "id": ann.id,
+                "shop_id": ann.shop_id,
+                "type": ann.type,
+                "message": ann.message,
+                "call_to_action": ann.call_to_action,
+                "schedule_at": ann.schedule_at.isoformat() if ann.schedule_at else None,
+                "expire_at": ann.expire_at.isoformat() if ann.expire_at else None,
+                "send_to": ann.send_to,
+                "status": ann.status
+            })
+
+    has_hours = len(hours_list) > 0
+    has_deliv = len(delivery_list) > 0
+    is_ds_configured = bool(has_hours or has_deliv or shop.visible_online)
+
+    return {
+        "id": shop.id,
+        "ui_id": shop.ui_id,
+        "sequence_id": shop.sequence_id,
+        "user_id": shop.user_id,
+        "name": shop.name,
+        "description": shop.description,
+        "tagline": shop.tagline,
+        "categories": cats,
+        "category": cats[0] if cats else "",
+        "business_infos": shop.business_infos or {},
+        "address": shop.address or {},
+        "banner_url": shop.banner_url,
+        "logo_url": shop.logo_url,
+        "additional_infos": add_infos,
+        "datas": add_infos,
+        "visible_online": shop.visible_online,
+        "visibility_only": vis_only,
+        "is_ordering_enabled": ord_enabled,
+        "has_operating_hours": has_hours,
+        "has_delivery_options": has_deliv,
+        "is_digital_store_configured": is_ds_configured,
+        "can_show_digital_store_dashboard": is_ds_configured,
+        "image_urls": [],
+        "operating_hours": hours_list,
+        "delivery_options": delivery_list,
+        "announcements": announcements_list,
+        "created_at": shop.created_at.isoformat() if hasattr(shop.created_at, "isoformat") else str(shop.created_at),
+        "updated_at": shop.updated_at.isoformat() if hasattr(shop.updated_at, "isoformat") else str(shop.updated_at),
+    }
+
 def _map_shop(row) -> Optional[dict]:
     if not row:
         return None
@@ -24,7 +114,20 @@ def _map_shop(row) -> Optional[dict]:
     # Map model to schema fields
     cats = d.pop('categories', [])
     d['category'] = cats[0] if cats else ''
-    d['datas'] = d.pop('additional_infos', {}) or {}
+    add_infos = d.pop('additional_infos', {}) or {}
+    d['datas'] = add_infos
+    d['additional_infos'] = add_infos
+    vis_only = add_infos.get("visibility_only", False) if isinstance(add_infos, dict) else False
+    ord_enabled = add_infos.get("is_ordering_enabled", not vis_only) if isinstance(add_infos, dict) else True
+    if vis_only:
+        ord_enabled = False
+    d['visibility_only'] = vis_only
+    d['is_ordering_enabled'] = ord_enabled
+    vis_online = bool(d.get("visible_online", False))
+    d['has_operating_hours'] = False
+    d['has_delivery_options'] = False
+    d['is_digital_store_configured'] = vis_online
+    d['can_show_digital_store_dashboard'] = vis_online
     d['image_urls'] = []
     return d
 
@@ -175,38 +278,26 @@ class ShopRepo(BaseRepoModel):
     
 
     async def getby_userid(self,data:GetShopByUserIdSchema)-> List[dict] | list:
-        created_at=func.date(func.timezone(data.timezone.value,Shops.created_at)).label("created_at")
-        from sqlalchemy import union
-
         # Shops owned by the user
-        stmt1 = (
-            select(
-                *self.shop_cols,
-                created_at
-            )
-            .where(
-                Shops.user_id==data.user_id
-            )
-        )
+        stmt1 = select(Shops).where(Shops.user_id == data.user_id)
+        res1 = await self.session.execute(stmt1)
+        owned_shops = res1.scalars().all()
 
         # Shops where the user is an employee
-        stmt2 = (
-            select(
-                *self.shop_cols,
-                created_at
-            )
-            .join(Employees, Employees.shop_id == Shops.id)
-            .where(
-                and_(
-                    Employees.user_id == data.user_id,
-                    Employees.accepted == True
-                )
+        stmt2 = select(Shops).join(Employees, Employees.shop_id == Shops.id).where(
+            and_(
+                Employees.user_id == data.user_id,
+                Employees.accepted == True
             )
         )
-        
-        shop_stmt = union(stmt1, stmt2)
-        shops=(await self.session.execute(shop_stmt)).mappings().all()
-        return shops
+        res2 = await self.session.execute(stmt2)
+        emp_shops = res2.scalars().all()
+
+        all_shops_map = {}
+        for s in list(owned_shops) + list(emp_shops):
+            if s and s.id not in all_shops_map:
+                all_shops_map[s.id] = _serialize_shop_model(s)
+        return list(all_shops_map.values())
     
 
     async def verify_shop(self,data:VerifyShoSchema)-> dict | None:
@@ -250,6 +341,26 @@ class ShopRepo(BaseRepoModel):
     # --- Operating Hours CRUD ---
     @start_db_transaction
     async def add_operating_hours(self, shop_id: str, data: CreateOperatingHoursSchema) -> dict | None:
+        # Check if operating hours for this day already exists
+        check_stmt = select(ShopOperatingHours).where(
+            and_(
+                ShopOperatingHours.shop_id == shop_id,
+                ShopOperatingHours.day == data.day
+            )
+        )
+        existing = (await self.session.execute(check_stmt)).scalar_one_or_none()
+        if existing:
+            existing.open_at = data.open_at
+            existing.close_at = data.close_at
+            await self.session.flush()
+            return {
+                "id": existing.id,
+                "shop_id": existing.shop_id,
+                "open_at": existing.open_at,
+                "close_at": existing.close_at,
+                "day": existing.day
+            }
+
         values = data.model_dump()
         values["shop_id"] = shop_id
         stmt = insert(ShopOperatingHours).values(**values).returning(
@@ -301,6 +412,47 @@ class ShopRepo(BaseRepoModel):
     # --- Delivery Options CRUD ---
     @start_db_transaction
     async def add_delivery_options(self, shop_id: str, data: CreateDeliverySchema) -> dict | None:
+        deliv_type = data.type.value if hasattr(data.type, "value") else data.type
+        # Check if delivery option for this type already exists
+        check_stmt = select(ShopDelivery).where(
+            and_(
+                ShopDelivery.shop_id == shop_id,
+                ShopDelivery.type == deliv_type
+            )
+        )
+        existing = (await self.session.execute(check_stmt)).scalar_one_or_none()
+        if existing:
+            if data.speed is not None:
+                existing.speed = data.speed
+            if data.free_shipping_amount is not None:
+                existing.free_shipping_amount = data.free_shipping_amount
+            if data.min_order_amount is not None:
+                existing.min_order_amount = data.min_order_amount
+            if data.delivery_charge is not None:
+                existing.delivery_charge = data.delivery_charge
+            if data.charge_per_km is not None:
+                existing.charge_per_km = data.charge_per_km
+            if data.radius is not None:
+                existing.radius = data.radius
+            if data.delivery_by is not None:
+                existing.delivery_by = data.delivery_by.value if hasattr(data.delivery_by, "value") else data.delivery_by
+            if data.enabled is not None:
+                existing.enabled = data.enabled
+            await self.session.flush()
+            return {
+                "id": existing.id,
+                "shop_id": existing.shop_id,
+                "type": existing.type,
+                "speed": existing.speed,
+                "free_shipping_amount": existing.free_shipping_amount,
+                "min_order_amount": existing.min_order_amount,
+                "delivery_charge": existing.delivery_charge,
+                "charge_per_km": existing.charge_per_km,
+                "radius": existing.radius,
+                "delivery_by": existing.delivery_by,
+                "enabled": existing.enabled
+            }
+
         values = data.model_dump(mode="json", exclude_none=True)
         values["shop_id"] = shop_id
         stmt = insert(ShopDelivery).values(**values).returning(
@@ -520,24 +672,35 @@ class ShopRepo(BaseRepoModel):
         res = await self.session.execute(stmt)
         return [_map_shop(row) for row in res.mappings().all()]
 
+    async def get_all_online_shops(self) -> List[dict]:
+        stmt = select(Shops).where(Shops.visible_online == True)
+        res = await self.session.execute(stmt)
+        shops = res.scalars().all()
+        return [_serialize_shop_model(s) for s in shops if s]
+
+    async def get_shop_with_relations(self, shop_id: str) -> Optional[dict]:
+        stmt = select(Shops).where(Shops.id == shop_id)
+        res = await self.session.execute(stmt)
+        shop = res.scalar_one_or_none()
+        return _serialize_shop_model(shop) if shop else None
+
     async def get_geofenced_shops(self, data) -> List[dict]:
-        created_at = func.date(func.timezone(data.timezone.value, Shops.created_at)).label("created_at")
-        
         stmt = (
-            select(
-                *self.shop_cols,
-                created_at
-            )
+            select(Shops)
             .join(ShopDelivery, ShopDelivery.shop_id == Shops.id)
             .where(
                 and_(
                     Shops.visible_online == True,
-                    ShopDelivery.type == data.delivery_type.value
+                    ShopDelivery.type == data.delivery_type.value,
+                    or_(ShopDelivery.enabled == True, ShopDelivery.enabled == None)
                 )
             )
+            .distinct()
         )
         res = await self.session.execute(stmt)
-        return [_map_shop(row) for row in res.mappings().all()]
+        shops = res.scalars().all()
+        return [_serialize_shop_model(s) for s in shops if s]
+
 
 
 

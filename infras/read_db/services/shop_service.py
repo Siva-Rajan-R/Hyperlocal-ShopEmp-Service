@@ -53,7 +53,25 @@ class ReadDbShopService(BaseReadDbModel):
         return await self.base_Repo_obj.get_one(queries=queries)
 
     # --- Operating Hours Sub-resources ---
+    async def set_operating_hours(self, shop_id: str, hours_list: list):
+        res = await self.collection.update_one(
+            {"id": shop_id},
+            {"$set": {"operating_hours": hours_list}}
+        )
+        return res.modified_count > 0
+
     async def add_operating_hours(self, shop_id: str, hours: dict):
+        day = hours.get("day")
+        if day:
+            existing = await self.collection.find_one({"id": shop_id, "operating_hours.day": day})
+            if existing:
+                set_fields = {f"operating_hours.$.{k}": v for k, v in hours.items()}
+                res = await self.collection.update_one(
+                    {"id": shop_id, "operating_hours.day": day},
+                    {"$set": set_fields}
+                )
+                return res.modified_count > 0
+
         res = await self.collection.update_one(
             {"id": shop_id},
             {"$push": {"operating_hours": hours}}
@@ -77,7 +95,25 @@ class ReadDbShopService(BaseReadDbModel):
         return res.modified_count > 0
 
     # --- Delivery Options Sub-resources ---
+    async def set_delivery_options(self, shop_id: str, delivery_list: list):
+        res = await self.collection.update_one(
+            {"id": shop_id},
+            {"$set": {"delivery_options": delivery_list}}
+        )
+        return res.modified_count > 0
+
     async def add_delivery_options(self, shop_id: str, delivery: dict):
+        deliv_type = delivery.get("type")
+        if deliv_type:
+            existing = await self.collection.find_one({"id": shop_id, "delivery_options.type": deliv_type})
+            if existing:
+                set_fields = {f"delivery_options.$.{k}": v for k, v in delivery.items()}
+                res = await self.collection.update_one(
+                    {"id": shop_id, "delivery_options.type": deliv_type},
+                    {"$set": set_fields}
+                )
+                return res.modified_count > 0
+
         res = await self.collection.update_one(
             {"id": shop_id},
             {"$push": {"delivery_options": delivery}}

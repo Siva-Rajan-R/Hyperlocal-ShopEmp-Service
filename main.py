@@ -20,14 +20,17 @@ async def shop_employee_service_lifespan(app:FastAPI):
         await init_shop_employee_pg_db()
         await init_infra_db()
         print("[SHOP-EMP SERVICE] ✅ Database & Saga DB initialized. Ready for operations.")
-        asyncio.create_task(worker())
+        app.state.worker_task = asyncio.create_task(worker())
         yield
 
     except Exception as e:
         ic(f"Error : Starting Shop-Employee service => {e}")
 
     finally:
-        ic("...Stoping Shop-Employee Servcie...")
+        ic("...Stopping Shop-Employee Service...")
+        if hasattr(app.state, "worker_task") and app.state.worker_task:
+            app.state.worker_task.cancel()
+            await asyncio.gather(app.state.worker_task, return_exceptions=True)
 
 # debug=False
 # openapi_url=None

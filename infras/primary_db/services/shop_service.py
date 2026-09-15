@@ -627,8 +627,19 @@ class ShopService(BaseServiceModel):
         return res
 
     async def get_shop_followers(self, shop_id: str) -> List[str]:
-        res = await self.shop_repo_obj.get_shop_followers(shop_id=shop_id)
-        return res
+        res = await self.shop_repo_obj.get_shop_followers(shop_id=shop_id) or []
+        try:
+            from infras.read_db.main import MONGO_CLIENT
+            favs_coll = MONGO_CLIENT["DigitalStoreUserServiceDb"]["favourite_shops"]
+            cursor = favs_coll.find({"shop_id": shop_id}, {"_id": 0, "user_id": 1})
+            mongo_users = await cursor.to_list(length=1000)
+            mongo_user_ids = [m["user_id"] for m in mongo_users if "user_id" in m]
+            
+            combined = list(dict.fromkeys(res + mongo_user_ids))
+            return combined
+        except Exception as e:
+            ic(f"Error checking MongoDB followers: {e}")
+            return res
 
     async def get_user_followed_shops(self, user_id: str) -> List[dict]:
         res = await self.shop_repo_obj.get_user_followed_shops(user_id=user_id)

@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from api.routers.v1 import employee_routes,shop_routes
+from api.routers.v1 import employee_routes,shop_routes,subscription_routes
 from infras.primary_db.main import init_shop_employee_pg_db
 from contextlib import asynccontextmanager
 from icecream import ic
@@ -58,6 +58,8 @@ app=FastAPI(
 # Routes to include
 app.include_router(shop_routes.router)
 app.include_router(employee_routes.router)
+app.include_router(subscription_routes.router)
+app.include_router(subscription_routes.direct_router)
 
 
 

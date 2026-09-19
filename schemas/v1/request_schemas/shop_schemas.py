@@ -13,6 +13,7 @@ class ShopOptionalFieldsSchemas(BaseModel):
     website:Optional[str]=None
     visibility_only:Optional[bool]=None
     is_ordering_enabled:Optional[bool]=None
+    initial_stock_imported:Optional[bool]=None
 
 
 

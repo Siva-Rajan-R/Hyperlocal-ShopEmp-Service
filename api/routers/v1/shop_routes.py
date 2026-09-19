@@ -74,6 +74,15 @@ async def delete(
     return await HandleShopRequest(session=session).delete(data=data,user_id=auth_data["user_id"])
 
 
+@router.post('/{shop_id}/complete-initial-stock-import')
+@router.post('/{shop_id}/initial-stock-import/complete')
+async def complete_initial_stock_import(
+    shop_id: str,
+    session: PG_ASYNC_SESSION
+):
+    return await HandleShopRequest(session=session).complete_initial_stock_import(shop_id=shop_id)
+
+
 @router.post('/upload/images')
 async def upload_images(session:PG_ASYNC_SESSION,data:Annotated[UploadImagesSchema,Depends(UploadImagesSchema.as_form)],files:List[UploadFile]=File(...)):
     res=await upload_assets(files=files)

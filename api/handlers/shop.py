@@ -88,6 +88,27 @@ class HandleShopRequest:
             )
         )
     
+    async def complete_initial_stock_import(self, shop_id: str):
+        res = await ShopService(session=self.session).complete_initial_stock_import(shop_id=shop_id)
+        if res:
+            return SuccessResponseTypDict(
+                detail=BaseResponseTypDict(
+                    msg="Initial stock import marked as completed successfully",
+                    success=True,
+                    status_code=200
+                ),
+                data=res
+            )
+        raise HTTPException(
+            status_code=404,
+            detail=ErrorResponseTypDict(
+                msg="Error: Shop not found",
+                description=f"Shop with id '{shop_id}' not found",
+                success=False,
+                status_code=404
+            )
+        )
+    
 
 
     async def get(self,data:GetAllShopsSchema):

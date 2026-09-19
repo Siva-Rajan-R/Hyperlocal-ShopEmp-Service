@@ -4,6 +4,7 @@ from typing import Optional
 
 class ReadDbEmployeeCreateModel(BaseModel):
     employee_id:str
+    ui_id:Optional[str]=None
     user_id:str
     shop_id:str
     name:str
@@ -17,6 +18,7 @@ class ReadDbEmployeeCreateModel(BaseModel):
     additional_infos:Optional[dict]=None
 
 class ReadDbEmployeeUpdateModel(BaseModel):
+    ui_id:Optional[str]=None
     user_id:Optional[str]=None
     name:Optional[str]=None
     accepted:Optional[bool]=None

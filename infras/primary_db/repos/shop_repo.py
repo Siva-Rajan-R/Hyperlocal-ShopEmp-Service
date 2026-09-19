@@ -210,6 +210,22 @@ class ShopRepo(BaseRepoModel):
         is_updated=(await self.session.execute(shop_toupdate)).mappings().one_or_none()
         return is_updated
     
+    @start_db_transaction
+    async def complete_initial_stock_import(self, shop_id: str) -> dict | None:
+        curr_stmt = select(Shops.additional_infos).where(Shops.id == shop_id)
+        curr_add = (await self.session.execute(curr_stmt)).scalar_one_or_none() or {}
+        new_add = dict(curr_add) if isinstance(curr_add, dict) else {}
+        new_add["initial_stock_imported"] = True
+
+        shop_toupdate = (
+            update(Shops)
+            .where(Shops.id == shop_id)
+            .values(additional_infos=new_add)
+            .returning(*self.shop_cols)
+        )
+        is_updated = (await self.session.execute(shop_toupdate)).mappings().one_or_none()
+        return is_updated
+    
 
     @start_db_transaction
     async def delete(self,data:DeleteShopDbSchema)-> dict | None:

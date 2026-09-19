@@ -116,6 +116,7 @@ class EmployeeService(BaseServiceModel):
                 from infras.read_db.models.employee_model import ReadDbEmployeeCreateModel
                 mongo_payload = ReadDbEmployeeCreateModel(
                     employee_id=res["id"],
+                    ui_id=res.get("ui_id"),
                     user_id=res["user_id"],
                     shop_id=res["shop_id"],
                     name=res["name"],
@@ -257,6 +258,11 @@ class EmployeeService(BaseServiceModel):
         if not res:
             res=await self.employee_repo_obj.get(data=data)
         
+        if res and isinstance(res, list):
+            for item in res:
+                item["id"] = item.get("id") or item.get("employee_id")
+                item["employee_id"] = item.get("employee_id") or item.get("id")
+
         if data.offset in (0, 1):
             overall_values = await self.employee_repo_obj.get_overall_values(data=data)
             return {
@@ -272,13 +278,35 @@ class EmployeeService(BaseServiceModel):
         try:
             from infras.read_db.services.employee_service import ReadDbEmployeeService
             read_service = ReadDbEmployeeService(payload=None, conditions={"employee_id": data.id, "shop_id": data.shop_id})
-            res = await read_service.get_one(queries={"employee_id": data.id, "shop_id": data.shop_id})
+            res = await read_service.get_one(queries={"$or": [{"employee_id": data.id}, {"id": data.id}], "shop_id": data.shop_id})
         except Exception as e:
             ic(f"Failed to fetch employee from MongoDB: {e}")
             res = None
 
         if not res:
             res=await self.employee_repo_obj.getby_id(data=data)
+
+        if res:
+            res["id"] = res.get("id") or res.get("employee_id")
+            res["employee_id"] = res.get("employee_id") or res.get("id")
+
+            # Ensure ui_id is present
+            if not res.get("ui_id"):
+                pg_res = await self.employee_repo_obj.getby_id(data=data)
+                if pg_res and pg_res.get("ui_id"):
+                    res["ui_id"] = pg_res.get("ui_id")
+
+            # Attach shop_name if shop exists
+            if res.get("shop_id"):
+                try:
+                    from infras.primary_db.repos.shop_repo import ShopRepo
+                    from schemas.v1.request_schemas.shop_schemas import GetShopByIdSchema
+                    shop_doc = await ShopRepo(session=self.session).getby_id(GetShopByIdSchema(id=res["shop_id"]))
+                    if shop_doc:
+                        res["shop_name"] = shop_doc.get("name")
+                except Exception as se:
+                    ic(f"Failed to fetch shop name: {se}")
+
         return res
 
     
@@ -297,6 +325,11 @@ class EmployeeService(BaseServiceModel):
         
         if not res:
             res=await self.employee_repo_obj.getby_shopid(data=data)
+
+        if res and isinstance(res, list):
+            for item in res:
+                item["id"] = item.get("id") or item.get("employee_id")
+                item["employee_id"] = item.get("employee_id") or item.get("id")
         
         if data.offset in (0, 1):
             overall_values = await self.employee_repo_obj.get_overall_values(data=data)

@@ -294,6 +294,30 @@ class ShopService(BaseServiceModel):
 
     
 
+    async def complete_initial_stock_import(self, shop_id: str) -> dict | None:
+        res = await self.shop_repo_obj.complete_initial_stock_import(shop_id=shop_id)
+        if res:
+            res_dict = dict(res)
+            # Sync to MongoDB
+            try:
+                from infras.read_db.services.shop_service import ReadDbShopService
+                read_service = ReadDbShopService(payload=None, conditions={"id": shop_id})
+                existing_doc = await read_service.get_one(queries={"id": shop_id})
+                if existing_doc:
+                    add_infos = existing_doc.get("additional_infos") or {}
+                    add_infos["initial_stock_imported"] = True
+                    await read_service.base_Repo_obj.update(
+                        data={"additional_infos": add_infos},
+                        conditions={"id": shop_id}
+                    )
+            except Exception as e:
+                ic(f"Failed to sync complete_initial_stock_import to MongoDB: {e}")
+
+            add_infos = res_dict.get('additional_infos') or {}
+            res_dict['initial_stock_imported'] = True
+            return res_dict
+        return None
+
     async def get(self,data:GetAllShopsSchema)-> List[dict] | list:
         try:
             from infras.read_db.services.shop_service import ReadDbShopService
@@ -338,6 +362,7 @@ class ShopService(BaseServiceModel):
             vis_only = res.get('visibility_only', add_infos.get('visibility_only', False))
             res['visibility_only'] = bool(vis_only)
             res['is_ordering_enabled'] = bool(res.get('is_ordering_enabled', add_infos.get('is_ordering_enabled', not vis_only)))
+            res['initial_stock_imported'] = bool(add_infos.get('initial_stock_imported', False))
             if vis_only:
                 res['is_ordering_enabled'] = False
             hours = res.get("operating_hours") or []
@@ -391,6 +416,7 @@ class ShopService(BaseServiceModel):
                 vis_only = r.get('visibility_only', add_infos.get('visibility_only', False))
                 r['visibility_only'] = bool(vis_only)
                 r['is_ordering_enabled'] = bool(r.get('is_ordering_enabled', add_infos.get('is_ordering_enabled', not vis_only)))
+                r['initial_stock_imported'] = bool(add_infos.get('initial_stock_imported', False))
                 if vis_only:
                     r['is_ordering_enabled'] = False
                 hours = r.get("operating_hours") or []

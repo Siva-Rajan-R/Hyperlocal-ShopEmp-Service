@@ -44,9 +44,15 @@ class ReadDbBaseRepo:
         self,
         queries: dict,
         offset: Optional[int] = None,
-        limit: Optional[int] = None
+        limit: Optional[int] = None,
+        sort: Optional[list] = None
     ):
         cursor = self.collection.find(queries,{'_id':0})
+
+        if sort is not None:
+            cursor = cursor.sort(sort)
+        else:
+            cursor = cursor.sort([('_id', -1)])
 
         if offset is not None and limit is None:
             raise ValueError("offset cannot be used without limit")

@@ -134,6 +134,7 @@ class EmployeeRepo(BaseRepoModel):
             )
         )
         await self.session.execute(employee_todel)
+        await self.session.commit()
         return _map_employee(joined_res)
     
 
@@ -307,9 +308,10 @@ class EmployeeRepo(BaseRepoModel):
             update(Employees)
             .where(Employees.id == employee_id, Employees.shop_id == shop_id)
             .values(**values)
+            .returning(Employees.id)
         )
-        res = await self.session.execute(stmt)
-        return res.rowcount > 0
+        res = (await self.session.execute(stmt)).scalar_one_or_none()
+        return res is not None
 
     async def is_employee_exists(self, employee_account_id: str, shop_id: str) -> Optional[dict]:
         stmt = (

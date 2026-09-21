@@ -289,6 +289,21 @@ class ShopService(BaseServiceModel):
                 await ReadDbShopService(conditions={"id": data.shop_id}).delete()
             except Exception as e:
                 ic(f"Failed to sync shop deletion to MongoDB: {e}")
+            
+            try:
+                from integrations.utility_service import delete_assets
+                urls_to_delete = []
+                res_dict = dict(res) if hasattr(res, "_mapping") or isinstance(res, dict) else {}
+                if res_dict.get("logo_url"):
+                    urls_to_delete.append(res_dict.get("logo_url"))
+                if res_dict.get("banner_url"):
+                    urls_to_delete.append(res_dict.get("banner_url"))
+                if urls_to_delete:
+                    await delete_assets(urls=urls_to_delete)
+                    ic(f"Cleaned up shop logo/banner assets from storage: {urls_to_delete}")
+            except Exception as e:
+                ic(f"Failed to delete shop assets on shop deletion: {e}")
+
         return res
 
 

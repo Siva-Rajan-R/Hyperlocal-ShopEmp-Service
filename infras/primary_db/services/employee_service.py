@@ -95,6 +95,13 @@ class EmployeeService(BaseServiceModel):
         ui_id_res = await get_ui_id(shop_id=data.shop_id)
         if isinstance(ui_id_res, dict) and "prefix" in ui_id_res:
             ui_id = f"{ui_id_res.get('prefix')}-{ui_id_res.get('current_number')}"
+        # Store email and mobile in additional_infos so it is always retrievable
+        stored_additional_infos = dict(data.additional_infos or {})
+        if data.email:
+            stored_additional_infos["email"] = data.email
+        if data.mobile_number:
+            stored_additional_infos["mobile_number"] = data.mobile_number
+
         # Add Employee Record
         data_toadd=CreateEmployeeDbSchema(
             id=employee_id,
@@ -107,7 +114,7 @@ class EmployeeService(BaseServiceModel):
             joined_date=data.joined_date,
             department=data.department,
             accepted=False,
-            additional_infos=data.additional_infos
+            additional_infos=stored_additional_infos
         )
         res=await self.employee_repo_obj.create(data=data_toadd)
         if res:
@@ -222,19 +229,29 @@ class EmployeeService(BaseServiceModel):
                 ic(f"Failed to send employee update log: {log_err}")
         return res
 
-    async def delete(self,data:DeleteEmployeeSchema)-> dict | None:
+    async def delete(self, data: DeleteEmployeeSchema) -> dict | None:
         old_employee = await self.employee_repo_obj.getby_id(GetEmployeeByIdSchema(id=data.id, shop_id=data.shop_id))
-        res=await self.employee_repo_obj.delete(data=data)
-        if res:
-            try:
-                from infras.read_db.services.employee_service import ReadDbEmployeeService
-                await ReadDbEmployeeService(
-                    conditions={"employee_id": data.id, "shop_id": data.shop_id}
-                ).delete()
-            except Exception as e:
-                ic(f"Failed to sync employee deletion to MongoDB: {e}")
+        res = await self.employee_repo_obj.delete(data=data)
+        
+        # Always delete from MongoDB Read DB
+        mongo_doc = None
+        try:
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
+            read_emp_service = ReadDbEmployeeService(
+                payload=None,
+                conditions={"$or": [{"employee_id": data.id}, {"id": data.id}], "shop_id": data.shop_id}
+            )
+            mongo_doc = await read_emp_service.get_one(queries={"$or": [{"employee_id": data.id}, {"id": data.id}]})
+            await read_emp_service.delete()
+        except Exception as e:
+            ic(f"Failed to sync employee deletion to MongoDB: {e}")
 
-            employee_name = old_employee.get('name', 'Employee') if old_employee else 'Employee'
+        if not res and not mongo_doc:
+            return None
+
+        employee_name = (res.get("name") if res else None) or (old_employee.get('name') if old_employee else None) or (mongo_doc.get("name") if mongo_doc else "Employee")
+
+        try:
             await _send_activity_log(
                 shop_id=data.shop_id,
                 action="DELETED",
@@ -243,7 +260,10 @@ class EmployeeService(BaseServiceModel):
                 description=f"Deleted Employee {employee_name} ({data.id})",
                 changes=[]
             )
-        return res
+        except Exception as log_err:
+            ic(f"Failed to send employee deletion log: {log_err}")
+
+        return res or mongo_doc or {"id": data.id, "shop_id": data.shop_id, "name": employee_name}
     
 
     async def get(self,data:GetAllEmployeesSchema)-> dict:
@@ -301,7 +321,7 @@ class EmployeeService(BaseServiceModel):
                 try:
                     from infras.primary_db.repos.shop_repo import ShopRepo
                     from schemas.v1.request_schemas.shop_schemas import GetShopByIdSchema
-                    shop_doc = await ShopRepo(session=self.session).getby_id(GetShopByIdSchema(id=res["shop_id"]))
+                    shop_doc = await ShopRepo(session=self.session).getby_id(GetShopByIdSchema(shop_id=res["shop_id"]))
                     if shop_doc:
                         res["shop_name"] = shop_doc.get("name")
                 except Exception as se:
@@ -359,47 +379,162 @@ class EmployeeService(BaseServiceModel):
         # 1. Fetch employee record from Postgres
         from schemas.v1.request_schemas.employee_schemas import GetEmployeeByIdSchema
         employee_data = await self.employee_repo_obj.getby_id(GetEmployeeByIdSchema(id=employee_id, shop_id=shop_id))
-        if not employee_data:
+        
+        # If not found in Postgres, check MongoDB
+        mongo_emp = None
+        try:
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
+            read_emp_service = ReadDbEmployeeService(payload=None, conditions={})
+            mongo_emp = await read_emp_service.get_one(queries={"$or": [{"employee_id": employee_id}, {"id": employee_id}]})
+        except Exception as me:
+            ic(f"MongoDB employee lookup note: {me}")
+
+        if not employee_data and not mongo_emp:
             raise HTTPException(status_code=404, detail="Employee invitation record not found")
-            
-        employee_dict = dict(employee_data)
+
+        # If it was in Mongo but missing from Postgres, restore into Postgres
+        if not employee_data and mongo_emp:
+            try:
+                from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema
+                from datetime import datetime, date
+                joined_d = date.today()
+                if mongo_emp.get("joined_date"):
+                    try:
+                        joined_d = datetime.fromisoformat(str(mongo_emp["joined_date"]).split(" ")[0]).date()
+                    except Exception:
+                        pass
+                
+                reconstruct_schema = CreateEmployeeDbSchema(
+                    id=employee_id,
+                    ui_id=mongo_emp.get("ui_id"),
+                    user_id=mongo_emp.get("user_id"),
+                    name=mongo_emp.get("name", "Employee"),
+                    added_by=mongo_emp.get("added_by", ""),
+                    shop_id=shop_id,
+                    role=mongo_emp.get("role", "STAFF"),
+                    joined_date=joined_d,
+                    department=mongo_emp.get("department"),
+                    accepted=False,
+                    additional_infos=mongo_emp.get("additional_infos") or {}
+                )
+                employee_data = await self.employee_repo_obj.create(data=reconstruct_schema)
+            except Exception as re_err:
+                ic(f"Failed to restore employee to Postgres: {re_err}")
+
+        employee_dict = dict(employee_data) if employee_data else dict(mongo_emp or {})
         
-        # 2. Fetch email/mobile from MongoDB
-        from infras.read_db.services.employee_service import ReadDbEmployeeService
-        from infras.read_db.models.employee_model import ReadDbEmployeeUpdateModel
-        
-        read_emp_service = ReadDbEmployeeService(payload=None, conditions={})
-        mongo_emp = await read_emp_service.get_one(queries={"employee_id": employee_id, "shop_id": shop_id})
-        
-        email = mongo_emp.get("email") if mongo_emp else None
-        mobile_number = mongo_emp.get("mobile_number") if mongo_emp else None
+        # Fetch shop name
+        shop_name = "Retail Store"
+        try:
+            from infras.primary_db.repos.shop_repo import ShopRepo
+            from schemas.v1.request_schemas.shop_schemas import GetShopByIdSchema
+            shop_doc = await ShopRepo(session=self.session).getby_id(GetShopByIdSchema(shop_id=shop_id))
+            if shop_doc and shop_doc.get("name"):
+                shop_name = shop_doc.get("name")
+        except Exception as se:
+            ic(f"Failed to fetch shop name: {se}")
+
+        # 2. Extract email & mobile from MongoDB or Postgres additional_infos
+        email = None
+        mobile_number = None
+        try:
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
+            read_emp_service = ReadDbEmployeeService(payload=None, conditions={})
+            mongo_emp = await read_emp_service.get_one(queries={"$or": [{"employee_id": employee_id}, {"id": employee_id}]})
+            if mongo_emp:
+                email = mongo_emp.get("email")
+                mobile_number = mongo_emp.get("mobile_number")
+        except Exception as me:
+            ic(f"MongoDB employee lookup note: {me}")
+
+        # Fallback to Postgres additional_infos
+        add_infos = employee_dict.get("additional_infos") or {}
+        if not email and isinstance(add_infos, dict):
+            email = add_infos.get("email")
+        if not mobile_number and isinstance(add_infos, dict):
+            mobile_number = add_infos.get("mobile_number")
+
+        # If already accepted, return success idempotently
+        if employee_dict.get("accepted"):
+            return {
+                "success": True,
+                "employee_id": employee_id,
+                "shop_id": shop_id,
+                "email": email,
+                "has_credentials": False
+            }
+
+        employee_name = employee_dict.get("name") or "Employee"
+        role = employee_dict.get("role") or "STAFF"
         
         # 3. Check Auth-Service
         final_user_id = employee_dict.get("user_id")
+        temp_password = None
         
-        from integrations.auth_service import get_user_info, create_user_with_id
-        if email or mobile_number:
-            existing_user = await get_user_info(email=email, mobile_number=mobile_number)
-            if existing_user:
-                final_user_id = existing_user.get("user_id")
-            else:
-                await create_user_with_id(email=email, mobile_number=mobile_number, user_id=final_user_id)
+        try:
+            from integrations.auth_service import get_user_info, create_user_with_id
+            if email or mobile_number:
+                existing_user = await get_user_info(email=email, mobile_number=mobile_number)
+                if existing_user:
+                    final_user_id = existing_user.get("user_id") or final_user_id
+                else:
+                    import secrets
+                    import string
+                    rand_chars = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(8))
+                    generated_pwd = f"Emp@{rand_chars}"
+                    
+                    await create_user_with_id(
+                        email=email,
+                        mobile_number=mobile_number,
+                        user_id=final_user_id,
+                        password=generated_pwd
+                    )
+                    temp_password = generated_pwd
+        except Exception as auth_err:
+            ic(f"Auth Service provisioning note in accept_employee: {auth_err}")
         
         # 4. Accept employee and update user_id in Postgres
         success = await self.employee_repo_obj.accept_employee(employee_id=employee_id, shop_id=shop_id, user_id=final_user_id)
         if not success:
-            raise HTTPException(status_code=404, detail="Failed to accept employee")
+            raise HTTPException(status_code=404, detail="Failed to accept employee in database")
         
         # 5. Sync to MongoDB
         try:
+            from infras.read_db.services.employee_service import ReadDbEmployeeService
+            from infras.read_db.models.employee_model import ReadDbEmployeeUpdateModel
             await ReadDbEmployeeService(
                 payload=ReadDbEmployeeUpdateModel(accepted=True, user_id=final_user_id),
-                conditions={"employee_id": employee_id, "shop_id": shop_id}
+                conditions={"$or": [{"employee_id": employee_id}, {"id": employee_id}]}
             ).update()
         except Exception as e:
             ic(f"Failed to sync acceptance to MongoDB: {e}")
+
+        # 6. Send credentials email to the employee
+        if email:
+            try:
+                from core.utils.email_sender import send_employee_credentials_email
+                from core.configs.settings_config import SETTINGS
+                login_url = f"{SETTINGS.FRONTEND_BASE_URL}/login" if hasattr(SETTINGS, 'FRONTEND_BASE_URL') and SETTINGS.FRONTEND_BASE_URL else "http://localhost:5173/login"
+                await send_employee_credentials_email(
+                    email=email,
+                    name=employee_name,
+                    password=temp_password,
+                    shop_name=shop_name,
+                    role=role,
+                    login_url=login_url
+                )
+                ic(f"Sent employee credentials email to {email}")
+            except Exception as mail_err:
+                ic(f"Failed to send credentials email to employee {email}: {mail_err}")
         
-        return {"success": True, "employee_id": employee_id, "shop_id": shop_id}
+        return {
+            "success": True,
+            "employee_id": employee_id,
+            "shop_id": shop_id,
+            "email": email,
+            "has_credentials": bool(temp_password),
+            "shop_name": shop_name
+        }
 
     async def search(self, query:str, limit:int):
         """This is just a wrapper for ABC(Abstract Class) of BaseService"""

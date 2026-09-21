@@ -1,9 +1,10 @@
+from icecream import ic
 from fastapi import APIRouter,Depends,Query
 from infras.primary_db.main import get_pg_async_session,AsyncSession
 from typing import Annotated, List, Optional
 from ...handlers.employee import HandleEmployeeRequest,CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,SendVerifyEmployeeSchema,VerifyEmployeeTokenSchema
 from core.permissions.role_checker import require_permission
-
+from core.configs.settings_config import SETTINGS
 router=APIRouter(
     tags=['Employee CRUD'],
     prefix="/employees"
@@ -41,16 +42,38 @@ async def update(
 @router.get('/verify/token')
 async def verify_token_redirect(session:PG_ASYNC_SESSION, token: str = Query(...)):
     from fastapi.responses import RedirectResponse
-    import os
-    frontend_url = os.getenv("FRONTEND_BASE_URL", "https://market-place-ismv.vercel.app")
+    frontend_url = SETTINGS.FRONTEND_BASE_URL or "http://localhost:5173"
     try:
         res = await HandleEmployeeRequest(session=session).verify_token(data=VerifyEmployeeTokenSchema(token=token))
-        payload = res.get("data", {}) if isinstance(res, dict) else {}
+        
+        # Handle dict vs Pydantic model for response
+        if hasattr(res, "model_dump"):
+            res_dict = res.model_dump()
+        elif hasattr(res, "dict"):
+            res_dict = res.dict()
+        elif isinstance(res, dict):
+            res_dict = res
+        else:
+            res_dict = getattr(res, "__dict__", {})
+
+        payload = res_dict.get("data", {})
+        if hasattr(payload, "model_dump"):
+            payload = payload.model_dump()
+        elif hasattr(payload, "dict"):
+            payload = payload.dict()
+        elif not isinstance(payload, dict):
+            payload = getattr(payload, "__dict__", {})
+
+        import urllib.parse
+        shop_name_encoded = urllib.parse.quote(payload.get('shop_name', '')) if payload.get('shop_name') else ''
         return RedirectResponse(
-            url=f"{frontend_url}/employee/verify?status=success&employee_id={payload.get('employee_id', '')}&shop_id={payload.get('shop_id', '')}",
+            url=f"{frontend_url}/employee/verify?status=success&employee_id={payload.get('employee_id', '')}&shop_id={payload.get('shop_id', '')}&shop_name={shop_name_encoded}",
             status_code=302
         )
-    except Exception:
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        ic(f"Employee token verification redirect failed: {e}")
         return RedirectResponse(url=f"{frontend_url}/employee/verify?status=failed", status_code=302)
 
 @router.post('/verify/token')

@@ -85,11 +85,35 @@ async def complete_initial_stock_import(
 
 @router.post('/upload/images')
 async def upload_images(session:PG_ASYNC_SESSION,data:Annotated[UploadImagesSchema,Depends(UploadImagesSchema.as_form)],files:List[UploadFile]=File(...)):
-    res=await upload_assets(files=files)
-    ic(res,data.shop_id,data.image_type)
+    from infras.primary_db.models.shop_model import Shops
+    from sqlalchemy import select
+
+    # 1. Fetch current shop to get old image URL
+    stmt = select(Shops).where(Shops.id == data.shop_id)
+    shop_obj = (await session.execute(stmt)).scalar_one_or_none()
+
+    old_url = None
+    if shop_obj:
+        if data.image_type == "logo" and shop_obj.logo_url:
+            old_url = shop_obj.logo_url
+        elif data.image_type == "banner" and shop_obj.banner_url:
+            old_url = shop_obj.banner_url
+
+    # 2. Upload new asset
+    res = await upload_assets(files=files)
+    ic(res, data.shop_id, data.image_type)
     
-    url = res.get("data", [None])[0] if isinstance(res, dict) else None
+    url = res.get("data", [None])[0] if isinstance(res, dict) else (res[0] if isinstance(res, list) and res else None)
     ic(url)
+
+    # 3. If previous image existed and new upload succeeded, delete old asset from storage
+    if old_url and url and old_url != url:
+        try:
+            await delete_assets(urls=[old_url])
+            ic(f"Successfully deleted previous {data.image_type} asset from storage: {old_url}")
+        except Exception as e:
+            ic(f"Failed to delete previous {data.image_type} asset: {e}")
+
     return await HandleShopRequest(session=session).update(
         user_id=data.user_id,
         data=UpdateShopSchema(
@@ -102,8 +126,8 @@ async def upload_images(session:PG_ASYNC_SESSION,data:Annotated[UploadImagesSche
 
 @router.delete('/upload/images')
 async def delete_images(session:PG_ASYNC_SESSION,data:DeleteImagesSchema):
-    deleted=await delete_assets(urls=data.urls)
-    ic(deleted,data.urls,data.shop_id,data.ima)
+    deleted = await delete_assets(urls=data.urls)
+    ic(deleted, data.urls, data.shop_id, data.image_type)
     return await HandleShopRequest(session=session).update(
         user_id=data.user_id,
         data=UpdateShopSchema(

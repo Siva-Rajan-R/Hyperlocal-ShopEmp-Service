@@ -127,7 +127,7 @@ class HandleEmployeeRequest:
         get_res=await EmployeeService(session=self.session).getby_id(data=data_tocheck)
         ic(get_res)
         if get_res:
-            if get_res['accepted']:
+            if get_res.get('accepted'):
                 return SuccessResponseTypDict(
                     detail=BaseResponseTypDict(
                         msg="Employee is already verified.",
@@ -137,8 +137,34 @@ class HandleEmployeeRequest:
                     data=get_res
                 )
 
+            email = get_res.get('email')
+            if not email and isinstance(get_res.get('additional_infos'), dict):
+                email = get_res['additional_infos'].get('email')
+            
+            if not email:
+                try:
+                    from infras.read_db.services.employee_service import ReadDbEmployeeService
+                    mongo_doc = await ReadDbEmployeeService(payload=None, conditions={}).get_one(
+                        queries={"$or": [{"employee_id": data.id}, {"id": data.id}]}
+                    )
+                    if mongo_doc:
+                        email = mongo_doc.get("email")
+                except Exception as me:
+                    ic(f"Failed mongo lookup in send_verify: {me}")
+
+            if not email:
+                raise HTTPException(
+                    status_code=400,
+                    detail=ErrorResponseTypDict(
+                        msg="Error : Sending Verification",
+                        description="Employee email not found in record",
+                        success=False,
+                        status_code=400
+                    )
+                )
+
             token = generate_verification_token(employee_id=data.id, shop_id=data.shop_id)
-            sent = await send_verification_email(email=get_res['email'], name=get_res['name'], token=token)
+            sent = await send_verification_email(email=email, name=get_res.get('name') or 'Employee', token=token)
             if sent:
                 return SuccessResponseTypDict(
                     detail=BaseResponseTypDict(

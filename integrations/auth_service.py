@@ -36,6 +36,20 @@ async def get_user_info(email: Optional[EmailStr] = None, mobile_number: Optiona
     return None
 
 
+async def get_user_by_id(user_id: Optional[str] = None):
+    if not user_id:
+        return None
+    auth_service_base = f"{BASE_AUTH_SERVICE_URL}/auth"
+    async with httpx.AsyncClient(timeout=10) as client:
+        try:
+            response = await client.get(f"{auth_service_base}/users/by-id/{user_id}")
+            if response.status_code == 200:
+                return response.json()
+        except Exception as e:
+            ic(f"Auth Service lookup by user_id failed: {e}")
+    return None
+
+
 async def create_user_with_id(
     email: Optional[EmailStr] = None,
     mobile_number: Optional[str] = None,

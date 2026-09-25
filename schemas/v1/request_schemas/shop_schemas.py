@@ -8,12 +8,20 @@ from schemas.v1.request_schemas.delivery_schemas import CreateDeliverySchema
 
 # Optional Fields
 class ShopOptionalFieldsSchemas(BaseModel):
-    emails:Optional[list]=None
-    mobile_numbers:Optional[list]=None
-    website:Optional[str]=None
-    visibility_only:Optional[bool]=None
-    is_ordering_enabled:Optional[bool]=None
-    initial_stock_imported:Optional[bool]=None
+    emails: Optional[list] = None
+    mobile_numbers: Optional[list] = None
+    website: Optional[str] = None
+    visibility_only: Optional[bool] = None
+    is_ordering_enabled: Optional[bool] = None
+    initial_stock_imported: Optional[bool] = None
+    vacation_mode: Optional[bool] = None
+    vacation_message: Optional[str] = None
+    vacation_resume_date: Optional[str] = None
+    vacation_infos: Optional[Dict[str, Any]] = None
+
+    model_config = {
+        "extra": "allow"
+    }
 
 
 
@@ -94,4 +102,4 @@ class GetGeofencedShopsSchema(BaseModel):
     limit: Optional[int] = Field(default=20, le=100)
     offset: Optional[int] = Field(default=1)
     timezone: Optional[TimeZoneEnum] = Field(default=TimeZoneEnum.Asia_Kolkata)
-
+

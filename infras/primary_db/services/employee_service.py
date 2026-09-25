@@ -1,8 +1,10 @@
+import os
 from core.utils.user_context import get_activity_log_user_info
 from icecream import ic
 from infras.primary_db.repos.employee_repo import EmployeeRepo
 from infras.primary_db.models.shop_model import Shops
-from sqlalchemy import select,update,delete,or_,and_,func,String
+from infras.primary_db.models.employee_model import Employees
+from sqlalchemy import select, desc,update,delete,or_,and_,func,String
 from schemas.v1.db_schemas.employee_schemas import CreateEmployeeDbSchema,UpdateEmployeeDbSchema
 from schemas.v1.request_schemas.employee_schemas import CreateEmployeeSchema,UpdateEmployeeSchema,DeleteEmployeeSchema,GetAllEmployeesSchema,GetEmployeeByIdSchema,GetEmployeeByShopIdSchema,VerifyEmployeeSchema
 from models.service_models.base_service_model import BaseServiceModel
@@ -52,8 +54,64 @@ class EmployeeService(BaseServiceModel):
 
 
     async def create(self, data:CreateEmployeeSchema, owner_user_id:str)-> dict:
-        employee_id=generate_uuid()
+        mock_expired = os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")
+        if mock_expired:
+            raise HTTPException(
+                status_code=403,
+                detail=ErrorResponseTypDict(
+                    msg="Subscription Expired",
+                    description="Your subscription has expired. Adding new staff/users is paused until subscription is renewed.",
+                    success=False,
+                    status_code=403
+                )
+            )
+
         shop_id = data.shop_id
+        from infras.primary_db.models.subscription_model import ShopSubscriptions
+        from infras.primary_db.models.shop_model import Shops
+
+        # Find shop owner user_id
+        shop_stmt = select(Shops).where(Shops.id == shop_id)
+        shop_obj = (await self.session.execute(shop_stmt)).scalar_one_or_none()
+        owner_id = shop_obj.user_id if shop_obj else owner_user_id
+
+        # Count all employees across all shops owned by this user account
+        owner_shops_subquery = select(Shops.id).where(Shops.user_id == owner_id)
+        total_emp_stmt = select(func.count(Employees.id)).where(Employees.shop_id.in_(owner_shops_subquery))
+        total_user_count = (await self.session.execute(total_emp_stmt)).scalar() or 0
+
+        # Check user's subscription
+        sub_stmt = select(ShopSubscriptions).join(Shops, ShopSubscriptions.shop_id == Shops.id).where(Shops.user_id == owner_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
+        user_sub = (await self.session.execute(sub_stmt)).scalar_one_or_none()
+        if not user_sub:
+            sub_stmt2 = select(ShopSubscriptions).where(ShopSubscriptions.shop_id == shop_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
+            user_sub = (await self.session.execute(sub_stmt2)).scalar_one_or_none()
+
+        mock_expired = os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() == "true"
+        if mock_expired or (user_sub and user_sub.status == "expired"):
+            raise HTTPException(
+                status_code=403,
+                detail=ErrorResponseTypDict(
+                    msg="Subscription Expired",
+                    description="Your subscription has expired. Adding new staff/users is paused until subscription is renewed.",
+                    success=False,
+                    status_code=403
+                )
+            )
+
+        max_users = user_sub.max_users if user_sub else 2
+        if total_user_count >= max_users:
+            raise HTTPException(
+                status_code=403,
+                detail=ErrorResponseTypDict(
+                    msg="User Limit Reached",
+                    description=f"User limit reached ({total_user_count}/{max_users} users). Please upgrade your plan or add an Extra User add-on.",
+                    success=False,
+                    status_code=403
+                )
+            )
+
+        employee_id=generate_uuid()
         
         # Check in Authentication Service by email or mobile number
         user_id = None

@@ -1,6 +1,7 @@
+import os
 from core.utils.user_context import get_activity_log_user_info
 from infras.primary_db.repos.shop_repo import ShopRepo
-from sqlalchemy import select,update,delete,or_,and_,func,String
+from sqlalchemy import select, desc,update,delete,or_,and_,func,String
 import math
 from infras.primary_db.services.employee_service import EmployeeService
 from schemas.v1.db_schemas.shop_schemas import CreateShopDbSchema,UpdateShopDbSchema,DeleteShopDbSchema
@@ -27,6 +28,37 @@ class ShopService(BaseServiceModel):
 
 
     async def create(self, data:CreateShopSchema, user_id:str)-> dict | None:
+        mock_expired = os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")
+        if mock_expired:
+            raise HTTPException(
+                status_code=403,
+                detail="Subscription has expired. Creating new business locations is disabled until subscription is renewed."
+            )
+
+        from infras.primary_db.models.shop_model import Shops
+        from infras.primary_db.models.subscription_model import ShopSubscriptions
+
+        # Count existing shops owned by this user
+        existing_shops_stmt = select(func.count(Shops.id)).where(Shops.user_id == user_id)
+        existing_count = (await self.session.execute(existing_shops_stmt)).scalar() or 0
+
+        max_locations = 1
+        sub_stmt = select(ShopSubscriptions).join(Shops, ShopSubscriptions.shop_id == Shops.id).where(Shops.user_id == user_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
+        user_sub = (await self.session.execute(sub_stmt)).scalar_one_or_none()
+        if user_sub:
+            if user_sub.status == "expired":
+                raise HTTPException(
+                    status_code=403,
+                    detail="Subscription has expired. Creating new business locations is disabled until subscription is renewed."
+                )
+            max_locations = user_sub.max_locations
+
+        if existing_count >= max_locations:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Business location limit reached ({existing_count}/{max_locations} locations). Please upgrade your plan or add an Extra Location add-on."
+            )
+
         has_hours = data.operating_hours is not None and len(data.operating_hours) > 0
         has_delivery = data.delivery_options is not None and len(data.delivery_options) > 0
         if data.visible_online and (not has_hours or not has_delivery):
@@ -117,6 +149,74 @@ class ShopService(BaseServiceModel):
                 await ReadDbShopService(payload=mongo_payload).create()
             except Exception as e:
                 ic(f"Failed to sync shop to MongoDB: {e}")
+
+            # Auto-initialize 14-day Basic trial subscription for newly created shop
+            try:
+                from infras.primary_db.models.subscription_model import ShopSubscriptions
+                from datetime import datetime, timedelta, timezone
+                from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
+                
+                now_utc = datetime.now(timezone.utc)
+                trial_end = now_utc + timedelta(days=14)
+                
+                new_sub = ShopSubscriptions(
+                    id=generate_uuid(),
+                    shop_id=shop_id,
+                    plan_id="basic",
+                    plan_name="Basic",
+                    billing_cycle="monthly",
+                    status="trialing",
+                    trial_started_at=now_utc,
+                    trial_ends_at=trial_end,
+                    current_period_start=now_utc,
+                    current_period_end=trial_end,
+                    max_locations=1,
+                    max_users=2,
+                    max_skus=500,
+                    max_digital_stores=1,
+                    is_verified_badge=False,
+                    base_price=999.0,
+                    total_price=999.0,
+                    addons=[]
+                )
+                self.session.add(new_sub)
+                await self.session.commit()
+                ic(f"[SUBSCRIPTION] Activated 14-day Basic trial for shop {shop_id} until {trial_end.isoformat()}")
+
+                # Sync trial state to MongoDB for instant cross-service queries
+                try:
+                    from infras.read_db.main import MONGO_CLIENT
+                    sub_doc = {
+                        "shop_id": shop_id,
+                        "status": "trialing",
+                        "is_expired": False,
+                        "plan_id": "basic",
+                        "plan_name": "Basic",
+                        "limits": {
+                            "max_locations": 1,
+                            "max_users": 2,
+                            "max_skus": 500,
+                            "max_digital_stores": 1,
+                            "is_verified_badge": False
+                        },
+                        "trial_ends_at": trial_end.isoformat(),
+                        "current_period_end": trial_end.isoformat(),
+                        "updated_at": now_utc
+                    }
+                    await MONGO_CLIENT["ShopEmpDb"]["ShopSubscriptionsCollection"].update_one(
+                        {"shop_id": shop_id},
+                        {"$set": sub_doc},
+                        upsert=True
+                    )
+                    await MONGO_CLIENT["ShopEmpServiceDb"]["shop_subscriptions"].update_one(
+                        {"shop_id": shop_id},
+                        {"$set": sub_doc},
+                        upsert=True
+                    )
+                except Exception as mongo_sub_err:
+                    ic(f"Error syncing initial trial to Mongo: {mongo_sub_err}")
+            except Exception as trial_err:
+                ic(f"Error auto-initializing trial subscription: {trial_err}")
 
             # Emit "Shop Created" event to RabbitMQ
             try:

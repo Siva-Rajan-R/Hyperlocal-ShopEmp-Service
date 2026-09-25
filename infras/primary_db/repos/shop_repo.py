@@ -95,6 +95,8 @@ def _serialize_shop_model(shop: Shops) -> Optional[dict]:
         "visible_online": shop.visible_online,
         "visibility_only": vis_only,
         "is_ordering_enabled": ord_enabled,
+        "vacation_mode": add_infos.get("vacation_mode", (add_infos.get("vacation_infos") or {}).get("enabled", False)) if isinstance(add_infos, dict) else False,
+        "vacation_infos": add_infos.get("vacation_infos", {"enabled": add_infos.get("vacation_mode", False), "message": add_infos.get("vacation_message", ""), "resume_date": add_infos.get("vacation_resume_date", "")}) if isinstance(add_infos, dict) else {},
         "has_operating_hours": has_hours,
         "has_delivery_options": has_deliv,
         "is_digital_store_configured": is_ds_configured,

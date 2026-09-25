@@ -18,6 +18,8 @@ class ReadDbShopCreateModel(BaseModel):
     visible_online: bool = False
     visibility_only: bool = False
     is_ordering_enabled: bool = True
+    vacation_mode: Optional[bool] = False
+    vacation_infos: Optional[Dict[str, Any]] = {}
     operating_hours: List[Dict[str, Any]] = []
     delivery_options: List[Dict[str, Any]] = []
     announcements: List[Dict[str, Any]] = []
@@ -35,6 +37,8 @@ class ReadDbShopUpdateModel(BaseModel):
     visible_online: Optional[bool] = None
     visibility_only: Optional[bool] = None
     is_ordering_enabled: Optional[bool] = None
+    vacation_mode: Optional[bool] = None
+    vacation_infos: Optional[Dict[str, Any]] = None
     operating_hours: Optional[List[Dict[str, Any]]] = None
     delivery_options: Optional[List[Dict[str, Any]]] = None
     announcements: Optional[List[Dict[str, Any]]] = None

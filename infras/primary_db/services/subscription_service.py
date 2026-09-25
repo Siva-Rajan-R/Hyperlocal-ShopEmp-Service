@@ -145,7 +145,7 @@ ADDONS_CATALOG = {
         "name": "SKU Expansion",
         "price": 299.0,
         "billing_cycle": "monthly",
-        "description": "Increase catalogue capacity from 500 to up to 5,000 SKUs.",
+        "description": "Increase catalogue capacity by +5,000 SKUs.",
         "type": "sku"
     },
     "verified_badge": {
@@ -180,17 +180,68 @@ class SubscriptionService:
         res = await self.session.execute(stmt)
         sub = res.scalar_one_or_none()
 
-        emp_stmt = select(func.count(Employees.id)).where(Employees.shop_id == shop_id)
-        emp_res = await self.session.execute(emp_stmt)
-        active_users_count = emp_res.scalar() or 1
+        # Resolve owner user_id
+        shop_stmt = select(Shops).where(Shops.id == shop_id)
+        shop_obj = (await self.session.execute(shop_stmt)).scalar_one_or_none()
+        owner_id = shop_obj.user_id if shop_obj else None
+
+        # 1. Users count across all shops belonging to owner account
+        if owner_id:
+            owner_shops_subquery = select(Shops.id).where(Shops.user_id == owner_id)
+            emp_stmt = select(func.count(Employees.id)).where(Employees.shop_id.in_(owner_shops_subquery))
+            active_users_count = (await self.session.execute(emp_stmt)).scalar() or 0
+
+            loc_stmt = select(func.count(Shops.id)).where(Shops.user_id == owner_id)
+            locations_count = (await self.session.execute(loc_stmt)).scalar() or 1
+        else:
+            emp_stmt = select(func.count(Employees.id)).where(Employees.shop_id == shop_id)
+            active_users_count = (await self.session.execute(emp_stmt)).scalar() or 0
+            locations_count = 1
+
+        # 2. Total live SKUs count computed via aggregation (Standard product = 1 SKU, Variants = N SKUs)
+        skus_count = 0
+        try:
+            from infras.read_db.main import MONGO_CLIENT
+            pipeline = [
+                {"$match": {"shop_id": shop_id}},
+                {
+                    "$project": {
+                        "sku_count": {
+                            "$cond": {
+                                "if": {
+                                    "$and": [
+                                        {"$ne": ["$variants", None]},
+                                        {"$gt": [{"$size": {"$ifNull": [{"$objectToArray": "$variants"}, []]}}, 0]}
+                                    ]
+                                },
+                                "then": {"$size": {"$objectToArray": "$variants"}},
+                                "else": 1
+                            }
+                        }
+                    }
+                },
+                {
+                    "$group": {
+                        "_id": None,
+                        "total_skus": {"$sum": "$sku_count"}
+                    }
+                }
+            ]
+            agg_res = await MONGO_CLIENT["InventoryServiceReadDb"]["ProdInvCollections"].aggregate(pipeline).to_list(1)
+            if agg_res:
+                skus_count = agg_res[0].get("total_skus", 0)
+        except Exception as e:
+            ic(f"Error computing SKU count aggregation: {e}")
 
         now = datetime.now(timezone.utc)
 
+        mock_expired = (os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")) or (os.getenv("MOCK_TRIAL_EXPIRED", "false").lower() in ("true", "1", "yes"))
         if not sub:
             default_trial_end = (now + timedelta(days=14))
+            status = "expired" if mock_expired else "trial_available"
             return {
                 "has_subscription": False,
-                "status": "trial_available",
+                "status": status,
                 "plan_id": "basic",
                 "plan_name": "Basic (Trial Available)",
                 "billing_cycle": "monthly",
@@ -207,12 +258,14 @@ class SubscriptionService:
                 },
                 "usage": {
                     "current_users": active_users_count,
-                    "current_locations": 1,
-                    "current_skus": 0,
+                    "current_locations": locations_count,
+                    "current_skus": skus_count,
                     "current_digital_stores": 1
                 },
                 "addons": []
             }
+
+        mock_expired = (os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")) or (os.getenv("MOCK_TRIAL_EXPIRED", "false").lower() in ("true", "1", "yes"))
 
         trial_days_left = 0
         if sub.trial_ends_at:
@@ -220,12 +273,41 @@ class SubscriptionService:
             trial_days_left = max(0, trial_delta.days)
 
         is_expired = False
-        if sub.status == "trialing" and sub.trial_ends_at and now > sub.trial_ends_at:
+        if mock_expired:
+            is_expired = True
+        elif sub.status == "trialing" and sub.trial_ends_at and now > sub.trial_ends_at:
             is_expired = True
         elif sub.status == "active" and sub.current_period_end and now > sub.current_period_end:
             is_expired = True
 
         status = "expired" if is_expired else sub.status
+
+        # Sync to Mongo for fast cross-service queries
+        try:
+            from infras.read_db.main import MONGO_CLIENT
+            sub_doc = {
+                "shop_id": shop_id,
+                "status": status,
+                "is_expired": is_expired,
+                "plan_id": sub.plan_id,
+                "plan_name": sub.plan_name,
+                "limits": {
+                    "max_locations": sub.max_locations,
+                    "max_users": sub.max_users,
+                    "max_skus": sub.max_skus,
+                    "max_digital_stores": sub.max_digital_stores,
+                    "is_verified_badge": sub.is_verified_badge
+                },
+                "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
+                "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None
+            }
+            await MONGO_CLIENT["ShopEmpDb"]["ShopSubscriptionsCollection"].update_one(
+                {"shop_id": shop_id},
+                {"$set": sub_doc},
+                upsert=True
+            )
+        except Exception as e:
+            ic(f"Error syncing subscription to Mongo: {e}")
 
         return {
             "has_subscription": True,
@@ -253,8 +335,8 @@ class SubscriptionService:
             },
             "usage": {
                 "current_users": active_users_count,
-                "current_locations": 1,
-                "current_skus": 0,
+                "current_locations": locations_count,
+                "current_skus": skus_count,
                 "current_digital_stores": 1
             }
         }
@@ -336,6 +418,42 @@ class SubscriptionService:
                     "quantity": qty,
                     "billing_cycle": catalog_addon["billing_cycle"]
                 })
+
+        # Check current active subscription & enforce downgrade block + proration deduction
+        sub_stmt = select(ShopSubscriptions).where(ShopSubscriptions.shop_id == data.shop_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
+        sub_res = await self.session.execute(sub_stmt)
+        current_sub = sub_res.scalar_one_or_none()
+
+        PLAN_TIERS = {"digital_store": 1, "basic": 2, "pro": 3}
+        target_tier = PLAN_TIERS.get(data.plan_id, 0)
+
+        now = datetime.now(timezone.utc)
+        mock_expired = (os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")) or (os.getenv("MOCK_TRIAL_EXPIRED", "false").lower() in ("true", "1", "yes"))
+        is_sub_active = (
+            current_sub is not None and 
+            current_sub.status == "active" and 
+            not mock_expired and 
+            current_sub.current_period_end > now
+        )
+
+        if is_sub_active:
+            cur_tier = PLAN_TIERS.get(current_sub.plan_id, 0)
+            if target_tier < cur_tier:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Downgrade not permitted. You are currently on an active {current_sub.plan_name} plan."
+                )
+            
+            # Upgrading to higher tier mid-cycle: deduct existing remaining days credit
+            if target_tier > cur_tier:
+                days_left = max(1, (current_sub.current_period_end - now).days)
+                days_cycle = 365 if data.billing_cycle == "annual" else 30
+                cur_plan_info = PLANS_CATALOG.get(current_sub.plan_id, {})
+                cur_base_price = cur_plan_info.get("annual_price" if data.billing_cycle == "annual" else "monthly_price", 0.0)
+                
+                diff = max(0.0, base_price - cur_base_price)
+                prorated_base = round((diff * days_left) / days_cycle, 2)
+                base_price = prorated_base
 
         total_amount = base_price + addons_total
         amount_in_paise = int(round(total_amount * 100))
@@ -471,13 +589,27 @@ class SubscriptionService:
                 elif catalog_addon["id"] == "extra_user":
                     max_users += qty
                 elif catalog_addon["id"] == "sku_expansion":
-                    max_skus = max(max_skus, 5000)
+                    max_skus += 5000 * qty
                 elif catalog_addon["id"] == "verified_badge":
                     is_verified_badge = True
 
         sub_stmt = select(ShopSubscriptions).where(ShopSubscriptions.shop_id == data.shop_id).limit(1)
         sub_res = await self.session.execute(sub_stmt)
         sub = sub_res.scalar_one_or_none()
+
+        PLAN_TIERS = {"digital_store": 1, "basic": 2, "pro": 3}
+        target_tier = PLAN_TIERS.get(data.plan_id, 0)
+        mock_expired = (os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")) or (os.getenv("MOCK_TRIAL_EXPIRED", "false").lower() in ("true", "1", "yes"))
+
+        if sub and sub.status == "active" and not mock_expired and sub.current_period_end > now:
+            cur_tier = PLAN_TIERS.get(sub.plan_id, 0)
+            if target_tier < cur_tier:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Downgrade not permitted. You are currently on an active {sub.plan_name} plan."
+                )
+            if target_tier > cur_tier and data.billing_cycle == sub.billing_cycle:
+                period_end = sub.current_period_end
 
         base_price = plan["annual_price"] if data.billing_cycle == "annual" else plan["monthly_price"]
         total_price = tx.amount if tx else base_price
@@ -529,6 +661,76 @@ class SubscriptionService:
                 tx.subscription_id = sub_id
 
         await self.session.commit()
+
+        # Send official tax invoice email for this shop purchase
+        try:
+            shop_stmt = select(Shops).where(Shops.id == data.shop_id)
+            shop_obj = (await self.session.execute(shop_stmt)).scalar_one_or_none()
+            shop_name = shop_obj.name if shop_obj else "Your Store"
+
+            recipient_email = None
+            recipient_name = "Store Owner"
+
+            # 1. Look up user details from Auth Service
+            try:
+                from integrations.auth_service import get_user_by_id
+                user_info = await get_user_by_id(user_id)
+                if user_info:
+                    recipient_email = user_info.get("email")
+                    recipient_name = user_info.get("name") or user_info.get("username") or "Store Owner"
+            except Exception as auth_err:
+                ic(f"Could not fetch user by id: {auth_err}")
+
+            # 2. Fallback to shop contact email
+            if not recipient_email and shop_obj:
+                if shop_obj.additional_infos and isinstance(shop_obj.additional_infos, dict):
+                    emails = shop_obj.additional_infos.get("emails", [])
+                    if emails and len(emails) > 0:
+                        recipient_email = emails[0]
+                if not recipient_email and shop_obj.business_infos and isinstance(shop_obj.business_infos, dict):
+                    recipient_email = shop_obj.business_infos.get("email")
+
+            # 3. Fallback to employees table
+            if not recipient_email:
+                emp_owner_stmt = select(Employees).where(
+                    Employees.shop_id == data.shop_id,
+                    Employees.role.in_(["OWNER", "ADMIN"])
+                ).limit(1)
+                emp_owner = (await self.session.execute(emp_owner_stmt)).scalar_one_or_none()
+                if emp_owner and emp_owner.additional_infos and isinstance(emp_owner.additional_infos, dict):
+                    recipient_email = emp_owner.additional_infos.get("email")
+                    recipient_name = emp_owner.name or recipient_name
+
+            if recipient_email:
+                from core.utils.email_sender import send_subscription_invoice_email
+                renewal_str = period_end.strftime("%d %B %Y")
+                receipt_no = tx.receipt if tx else f"rcpt_{data.shop_id[:8]}"
+                payment_ref = data.razorpay_payment_id
+
+                await send_subscription_invoice_email(
+                    email=recipient_email,
+                    name=recipient_name,
+                    shop_name=shop_name,
+                    receipt_id=receipt_no,
+                    payment_id=payment_ref,
+                    plan_name=plan["name"],
+                    billing_cycle=data.billing_cycle,
+                    amount=total_price,
+                    renewal_date=renewal_str,
+                    limits={
+                        "max_skus": max_skus,
+                        "max_users": max_users,
+                        "max_locations": max_locations,
+                        "max_digital_stores": max_digital_stores
+                    },
+                    addons=active_addons
+                )
+                ic(f"Successfully dispatched subscription invoice email to {recipient_email} for shop {shop_name}")
+            else:
+                ic(f"No recipient email found to send invoice for shop {data.shop_id}")
+        except Exception as mail_exc:
+            ic(f"Failed to send subscription invoice email: {mail_exc}")
+
         return await self.get_current_subscription(data.shop_id)
 
     async def cancel_subscription(self, shop_id: str) -> Dict[str, Any]:

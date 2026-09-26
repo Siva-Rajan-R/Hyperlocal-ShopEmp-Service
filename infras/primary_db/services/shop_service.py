@@ -154,7 +154,6 @@ class ShopService(BaseServiceModel):
             try:
                 from infras.primary_db.models.subscription_model import ShopSubscriptions
                 from datetime import datetime, timedelta, timezone
-                from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
                 
                 now_utc = datetime.now(timezone.utc)
                 trial_end = now_utc + timedelta(days=14)

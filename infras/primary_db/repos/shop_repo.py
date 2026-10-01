@@ -21,9 +21,11 @@ def _serialize_shop_model(shop: Shops) -> Optional[dict]:
     if not shop:
         return None
     cats = shop.categories or []
-    add_infos = shop.additional_infos or {}
-    if not isinstance(add_infos, dict):
-        add_infos = {}
+    add_infos = dict(shop.additional_infos or {}) if isinstance(shop.additional_infos, dict) else {}
+    ret_pol = add_infos.get("return_policy") or add_infos.pop("refund_policy", None)
+    if ret_pol:
+        add_infos["return_policy"] = ret_pol
+    add_infos.pop("refund_policy", None)
     vis_only = add_infos.get("visibility_only", False)
     ord_enabled = add_infos.get("is_ordering_enabled", not vis_only)
     if vis_only:
@@ -53,6 +55,9 @@ def _serialize_shop_model(shop: Shops) -> Optional[dict]:
                 "delivery_charge": deliv.delivery_charge,
                 "charge_per_km": deliv.charge_per_km,
                 "radius": deliv.radius,
+                "base_distance": getattr(deliv, "base_distance", 0.0),
+                "extra_distance_step": getattr(deliv, "extra_distance_step", 1.0),
+                "pricing_model": getattr(deliv, "pricing_model", "FLAT"),
                 "delivery_by": deliv.delivery_by,
                 "enabled": deliv.enabled
             })
@@ -92,6 +97,7 @@ def _serialize_shop_model(shop: Shops) -> Optional[dict]:
         "logo_url": shop.logo_url,
         "additional_infos": add_infos,
         "datas": add_infos,
+        "return_policy": add_infos.get("return_policy") or add_infos.get("refund_policy") if isinstance(add_infos, dict) else None,
         "visible_online": shop.visible_online,
         "visibility_only": vis_only,
         "is_ordering_enabled": ord_enabled,
@@ -116,11 +122,16 @@ def _map_shop(row) -> Optional[dict]:
     # Map model to schema fields
     cats = d.pop('categories', [])
     d['category'] = cats[0] if cats else ''
-    add_infos = d.pop('additional_infos', {}) or {}
+    add_infos = dict(d.pop('additional_infos', {}) or {})
+    ret_pol = add_infos.get("return_policy") or add_infos.pop("refund_policy", None)
+    if ret_pol:
+        add_infos["return_policy"] = ret_pol
+    add_infos.pop("refund_policy", None)
     d['datas'] = add_infos
     d['additional_infos'] = add_infos
-    vis_only = add_infos.get("visibility_only", False) if isinstance(add_infos, dict) else False
-    ord_enabled = add_infos.get("is_ordering_enabled", not vis_only) if isinstance(add_infos, dict) else True
+    d['return_policy'] = ret_pol
+    vis_only = add_infos.get("visibility_only", False)
+    ord_enabled = add_infos.get("is_ordering_enabled", not vis_only)
     if vis_only:
         ord_enabled = False
     d['visibility_only'] = vis_only
@@ -452,6 +463,12 @@ class ShopRepo(BaseRepoModel):
                 existing.charge_per_km = data.charge_per_km
             if data.radius is not None:
                 existing.radius = data.radius
+            if data.base_distance is not None:
+                existing.base_distance = data.base_distance
+            if data.extra_distance_step is not None:
+                existing.extra_distance_step = data.extra_distance_step
+            if data.pricing_model is not None:
+                existing.pricing_model = data.pricing_model
             if data.delivery_by is not None:
                 existing.delivery_by = data.delivery_by.value if hasattr(data.delivery_by, "value") else data.delivery_by
             if data.enabled is not None:
@@ -467,6 +484,9 @@ class ShopRepo(BaseRepoModel):
                 "delivery_charge": existing.delivery_charge,
                 "charge_per_km": existing.charge_per_km,
                 "radius": existing.radius,
+                "base_distance": existing.base_distance,
+                "extra_distance_step": existing.extra_distance_step,
+                "pricing_model": existing.pricing_model,
                 "delivery_by": existing.delivery_by,
                 "enabled": existing.enabled
             }
@@ -483,6 +503,9 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.delivery_charge,
             ShopDelivery.charge_per_km,
             ShopDelivery.radius,
+            ShopDelivery.base_distance,
+            ShopDelivery.extra_distance_step,
+            ShopDelivery.pricing_model,
             ShopDelivery.delivery_by,
             ShopDelivery.enabled
         )
@@ -500,6 +523,9 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.delivery_charge,
             ShopDelivery.charge_per_km,
             ShopDelivery.radius,
+            ShopDelivery.base_distance,
+            ShopDelivery.extra_distance_step,
+            ShopDelivery.pricing_model,
             ShopDelivery.delivery_by,
             ShopDelivery.enabled
         ).where(ShopDelivery.shop_id == shop_id)
@@ -519,6 +545,9 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.delivery_charge,
             ShopDelivery.charge_per_km,
             ShopDelivery.radius,
+            ShopDelivery.base_distance,
+            ShopDelivery.extra_distance_step,
+            ShopDelivery.pricing_model,
             ShopDelivery.delivery_by,
             ShopDelivery.enabled
         )
@@ -537,6 +566,9 @@ class ShopRepo(BaseRepoModel):
             ShopDelivery.delivery_charge,
             ShopDelivery.charge_per_km,
             ShopDelivery.radius,
+            ShopDelivery.base_distance,
+            ShopDelivery.extra_distance_step,
+            ShopDelivery.pricing_model,
             ShopDelivery.delivery_by,
             ShopDelivery.enabled
         )

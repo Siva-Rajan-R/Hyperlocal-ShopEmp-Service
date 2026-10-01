@@ -18,6 +18,7 @@ class ShopOptionalFieldsSchemas(BaseModel):
     vacation_message: Optional[str] = None
     vacation_resume_date: Optional[str] = None
     vacation_infos: Optional[Dict[str, Any]] = None
+    return_policy: Optional[Dict[str, Any]] = None
 
     model_config = {
         "extra": "allow"
@@ -44,6 +45,8 @@ class CreateShopSchema(BaseModel):
 class UpdateShopSchema(BaseModel):
     id:str
     name:Optional[str]=None
+    description:Optional[str]=None
+    tagline:Optional[str]=None
     categories:Optional[List[str]]=None
     business_infos:Optional[ShopBusinessInfoTypDict]=None
     address:Optional[ShopAddressTypDict]=None

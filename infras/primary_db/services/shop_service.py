@@ -38,26 +38,31 @@ class ShopService(BaseServiceModel):
         from infras.primary_db.models.shop_model import Shops
         from infras.primary_db.models.subscription_model import ShopSubscriptions
 
-        # Count existing shops owned by this user
-        existing_shops_stmt = select(func.count(Shops.id)).where(Shops.user_id == user_id)
-        existing_count = (await self.session.execute(existing_shops_stmt)).scalar() or 0
+        # Check subscription environment: in development, creation is unlimited
+        sub_env = (os.getenv("SUBSCRIPTION_ENVIRONMENT") or os.getenv("SHOP_EMP_ENVIRONMENT") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+        is_dev = sub_env in ("development", "dev")
 
-        max_locations = 1
-        sub_stmt = select(ShopSubscriptions).join(Shops, ShopSubscriptions.shop_id == Shops.id).where(Shops.user_id == user_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
-        user_sub = (await self.session.execute(sub_stmt)).scalar_one_or_none()
-        if user_sub:
-            if user_sub.status == "expired":
+        if not is_dev:
+            # Count existing shops owned by this user
+            existing_shops_stmt = select(func.count(Shops.id)).where(Shops.user_id == user_id)
+            existing_count = (await self.session.execute(existing_shops_stmt)).scalar() or 0
+
+            max_locations = 1
+            sub_stmt = select(ShopSubscriptions).join(Shops, ShopSubscriptions.shop_id == Shops.id).where(Shops.user_id == user_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
+            user_sub = (await self.session.execute(sub_stmt)).scalar_one_or_none()
+            if user_sub:
+                if user_sub.status == "expired":
+                    raise HTTPException(
+                        status_code=403,
+                        detail="Subscription has expired. Creating new business locations is disabled until subscription is renewed."
+                    )
+                max_locations = user_sub.max_locations
+
+            if existing_count >= max_locations:
                 raise HTTPException(
                     status_code=403,
-                    detail="Subscription has expired. Creating new business locations is disabled until subscription is renewed."
+                    detail=f"Business location limit reached ({existing_count}/{max_locations} locations). Please upgrade your plan or add an Extra Location add-on."
                 )
-            max_locations = user_sub.max_locations
-
-        if existing_count >= max_locations:
-            raise HTTPException(
-                status_code=403,
-                detail=f"Business location limit reached ({existing_count}/{max_locations} locations). Please upgrade your plan or add an Extra Location add-on."
-            )
 
         has_hours = data.operating_hours is not None and len(data.operating_hours) > 0
         has_delivery = data.delivery_options is not None and len(data.delivery_options) > 0
@@ -139,6 +144,7 @@ class ShopService(BaseServiceModel):
                     banner_url=res_dict.get("banner_url"),
                     logo_url=res_dict.get("logo_url"),
                     additional_infos=add_infos,
+                    return_policy=add_infos.get("return_policy") or add_infos.get("refund_policy") if isinstance(add_infos, dict) else None,
                     visible_online=res_dict.get("visible_online", False),
                     visibility_only=vis_only,
                     is_ordering_enabled=ord_enabled,
@@ -283,12 +289,16 @@ class ShopService(BaseServiceModel):
 
         db_payload = data.model_dump(mode="json", exclude={"operating_hours", "delivery_options", "visibility_only", "is_ordering_enabled"}, exclude_unset=True, exclude_none=True)
         
-        # Handle visibility_only and is_ordering_enabled in additional_infos
-        if data.visibility_only is not None or data.is_ordering_enabled is not None:
+        # Handle visibility_only, is_ordering_enabled, and additional_infos merging
+        if data.visibility_only is not None or data.is_ordering_enabled is not None or "additional_infos" in db_payload:
             existing_shop = await self.shop_repo_obj.get_shop_with_relations(data.id)
-            existing_add = (existing_shop.get("additional_infos") if existing_shop else {}) or {}
-            if "additional_infos" in db_payload:
+            existing_add = dict((existing_shop.get("additional_infos") if existing_shop else {}) or {})
+            if "additional_infos" in db_payload and isinstance(db_payload["additional_infos"], dict):
                 existing_add.update(db_payload["additional_infos"])
+            ret_p = existing_add.get("return_policy") or existing_add.pop("refund_policy", None)
+            if ret_p:
+                existing_add["return_policy"] = ret_p
+            existing_add.pop("refund_policy", None)
             if data.visibility_only is not None:
                 existing_add["visibility_only"] = data.visibility_only
                 if data.visibility_only:
@@ -304,7 +314,13 @@ class ShopService(BaseServiceModel):
             res_dict = dict(res)
             cats = res_dict.get('categories', [])
             res_dict['category'] = cats[0] if cats else ''
-            add_infos = res_dict.get('additional_infos') or {}
+            add_infos = dict(res_dict.get('additional_infos') or {})
+            ret_p = add_infos.get("return_policy") or add_infos.pop("refund_policy", None)
+            if ret_p:
+                add_infos["return_policy"] = ret_p
+            add_infos.pop("refund_policy", None)
+            res_dict['additional_infos'] = add_infos
+            res_dict['return_policy'] = ret_p
             res_dict['visibility_only'] = add_infos.get('visibility_only', False)
             res_dict['is_ordering_enabled'] = add_infos.get('is_ordering_enabled', not res_dict['visibility_only'])
             res_dict['image_urls'] = []
@@ -349,7 +365,8 @@ class ShopService(BaseServiceModel):
                     address=res_dict.get("address"),
                     banner_url=res_dict.get("banner_url"),
                     logo_url=res_dict.get("logo_url"),
-                    additional_infos=res_dict.get("additional_infos"),
+                    additional_infos=add_infos,
+                    return_policy=ret_p,
                     visible_online=res_dict.get("visible_online"),
                     visibility_only=res_dict.get("visibility_only"),
                     is_ordering_enabled=res_dict.get("is_ordering_enabled")

@@ -28,6 +28,9 @@ migration_queries = [
     "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS delivery_charge FLOAT DEFAULT 0.0;",
     "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS charge_per_km FLOAT DEFAULT 0.0;",
     "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS radius FLOAT DEFAULT 0.0;",
+    "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS base_distance FLOAT DEFAULT 0.0;",
+    "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS extra_distance_step FLOAT DEFAULT 1.0;",
+    "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS pricing_model VARCHAR DEFAULT 'FLAT';",
     "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS delivery_by VARCHAR DEFAULT 'PARTNERS';",
     "ALTER TABLE shop_delivery ADD COLUMN IF NOT EXISTS enabled BOOLEAN DEFAULT TRUE;",
     

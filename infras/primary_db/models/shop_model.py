@@ -59,6 +59,9 @@ class ShopDelivery(BASE):
     delivery_charge=Column(Float,nullable=True,default=0.0)
     charge_per_km=Column(Float,nullable=True,default=0.0)
     radius=Column(Float,nullable=True,default=0.0)
+    base_distance=Column(Float,nullable=True,default=0.0)
+    extra_distance_step=Column(Float,nullable=True,default=1.0)
+    pricing_model=Column(String,nullable=True,default="FLAT")
     delivery_by=Column(String,nullable=True,default="PARTNERS")
     enabled=Column(Boolean,nullable=True,default=True)
 

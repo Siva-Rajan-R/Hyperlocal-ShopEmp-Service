@@ -235,26 +235,33 @@ class SubscriptionService:
 
         now = datetime.now(timezone.utc)
 
+        sub_env = (os.getenv("SUBSCRIPTION_ENVIRONMENT") or os.getenv("SHOP_EMP_ENVIRONMENT") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+        is_dev = sub_env in ("development", "dev")
+
         mock_expired = (os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")) or (os.getenv("MOCK_TRIAL_EXPIRED", "false").lower() in ("true", "1", "yes"))
         if not sub:
-            default_trial_end = (now + timedelta(days=14))
-            status = "expired" if mock_expired else "trial_available"
+            default_trial_end = (now + timedelta(days=365 if is_dev else 14))
+            status = "expired" if (mock_expired and not is_dev) else ("active" if is_dev else "trial_available")
+            max_limit_val = 999999 if is_dev else 500
+            max_users_val = 999999 if is_dev else 2
+            max_locations_val = 999999 if is_dev else 1
+            max_digital_stores_val = 999999 if is_dev else 1
             return {
-                "has_subscription": False,
+                "has_subscription": True if is_dev else False,
                 "status": status,
-                "plan_id": "basic",
-                "plan_name": "Basic (Trial Available)",
+                "plan_id": "development_unlimited" if is_dev else "basic",
+                "plan_name": "Development Plan (Unlimited)" if is_dev else "Basic (Trial Available)",
                 "billing_cycle": "monthly",
-                "trial_days_remaining": 14,
+                "trial_days_remaining": 365 if is_dev else 14,
                 "trial_ends_at": default_trial_end.isoformat(),
                 "current_period_start": now.isoformat(),
                 "current_period_end": default_trial_end.isoformat(),
                 "limits": {
-                    "max_locations": 1,
-                    "max_users": 2,
-                    "max_skus": 500,
-                    "max_digital_stores": 1,
-                    "is_verified_badge": False
+                    "max_locations": max_locations_val,
+                    "max_users": max_users_val,
+                    "max_skus": max_limit_val,
+                    "max_digital_stores": max_digital_stores_val,
+                    "is_verified_badge": True if is_dev else False
                 },
                 "usage": {
                     "current_users": active_users_count,
@@ -265,22 +272,28 @@ class SubscriptionService:
                 "addons": []
             }
 
-        mock_expired = (os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() in ("true", "1", "yes")) or (os.getenv("MOCK_TRIAL_EXPIRED", "false").lower() in ("true", "1", "yes"))
-
         trial_days_left = 0
         if sub.trial_ends_at:
             trial_delta = sub.trial_ends_at - now
             trial_days_left = max(0, trial_delta.days)
 
         is_expired = False
-        if mock_expired:
+        if mock_expired and not is_dev:
             is_expired = True
-        elif sub.status == "trialing" and sub.trial_ends_at and now > sub.trial_ends_at:
-            is_expired = True
-        elif sub.status == "active" and sub.current_period_end and now > sub.current_period_end:
-            is_expired = True
+        elif not is_dev:
+            if sub.status == "trialing" and sub.trial_ends_at and now > sub.trial_ends_at:
+                is_expired = True
+            elif sub.status == "active" and sub.current_period_end and now > sub.current_period_end:
+                is_expired = True
 
-        status = "expired" if is_expired else sub.status
+        status = "expired" if is_expired else ("active" if is_dev else sub.status)
+        limits_dict = {
+            "max_locations": 999999 if is_dev else sub.max_locations,
+            "max_users": 999999 if is_dev else sub.max_users,
+            "max_skus": 999999 if is_dev else sub.max_skus,
+            "max_digital_stores": 999999 if is_dev else sub.max_digital_stores,
+            "is_verified_badge": True if is_dev else sub.is_verified_badge
+        }
 
         # Sync to Mongo for fast cross-service queries
         try:
@@ -291,13 +304,7 @@ class SubscriptionService:
                 "is_expired": is_expired,
                 "plan_id": sub.plan_id,
                 "plan_name": sub.plan_name,
-                "limits": {
-                    "max_locations": sub.max_locations,
-                    "max_users": sub.max_users,
-                    "max_skus": sub.max_skus,
-                    "max_digital_stores": sub.max_digital_stores,
-                    "is_verified_badge": sub.is_verified_badge
-                },
+                "limits": limits_dict,
                 "current_period_end": sub.current_period_end.isoformat() if sub.current_period_end else None,
                 "trial_ends_at": sub.trial_ends_at.isoformat() if sub.trial_ends_at else None
             }
@@ -326,13 +333,7 @@ class SubscriptionService:
             "base_price": sub.base_price,
             "total_price": sub.total_price,
             "addons": sub.addons or [],
-            "limits": {
-                "max_locations": sub.max_locations,
-                "max_users": sub.max_users,
-                "max_skus": sub.max_skus,
-                "max_digital_stores": sub.max_digital_stores,
-                "is_verified_badge": sub.is_verified_badge
-            },
+            "limits": limits_dict,
             "usage": {
                 "current_users": active_users_count,
                 "current_locations": locations_count,

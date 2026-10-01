@@ -24,13 +24,17 @@ class UpdateShopDbSchema(BaseModel):
     id:str
     user_id:str
     name:Optional[str]=None
+    description:Optional[str]=None
+    tagline:Optional[str]=None
+    categories:Optional[List[str]]=None
     category:Optional[str]=None
     address:Optional[ShopAddressTypDict]=None
     business_infos:Optional[ShopBusinessInfoTypDict]=None
     image_urls:Optional[list]=[]
     logo_url:Optional[str]=None
     banner_url:Optional[str]=None
-    datas:Optional[dict]={}
+    additional_infos:Optional[dict]=None
+    datas:Optional[dict]=None
     visible_online:Optional[bool]=None
 
 

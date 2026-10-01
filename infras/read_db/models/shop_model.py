@@ -15,6 +15,7 @@ class ReadDbShopCreateModel(BaseModel):
     banner_url: Optional[str] = None
     logo_url: Optional[str] = None
     additional_infos: Optional[Dict[str, Any]] = {}  # mapped from additional_infos
+    return_policy: Optional[Dict[str, Any]] = None
     visible_online: bool = False
     visibility_only: bool = False
     is_ordering_enabled: bool = True
@@ -34,6 +35,7 @@ class ReadDbShopUpdateModel(BaseModel):
     banner_url: Optional[str] = None
     logo_url: Optional[str] = None
     additional_infos: Optional[Dict[str, Any]] = None
+    return_policy: Optional[Dict[str, Any]] = None
     visible_online: Optional[bool] = None
     visibility_only: Optional[bool] = None
     is_ordering_enabled: Optional[bool] = None

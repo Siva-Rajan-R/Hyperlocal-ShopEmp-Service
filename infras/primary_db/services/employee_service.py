@@ -87,29 +87,34 @@ class EmployeeService(BaseServiceModel):
             sub_stmt2 = select(ShopSubscriptions).where(ShopSubscriptions.shop_id == shop_id).order_by(desc(ShopSubscriptions.created_at)).limit(1)
             user_sub = (await self.session.execute(sub_stmt2)).scalar_one_or_none()
 
-        mock_expired = os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() == "true"
-        if mock_expired or (user_sub and user_sub.status == "expired"):
-            raise HTTPException(
-                status_code=403,
-                detail=ErrorResponseTypDict(
-                    msg="Subscription Expired",
-                    description="Your subscription has expired. Adding new staff/users is paused until subscription is renewed.",
-                    success=False,
-                    status_code=403
-                )
-            )
+        # Check subscription environment: in development, creation is unlimited
+        sub_env = (os.getenv("SUBSCRIPTION_ENVIRONMENT") or os.getenv("SHOP_EMP_ENVIRONMENT") or os.getenv("ENVIRONMENT") or "development").strip().lower()
+        is_dev = sub_env in ("development", "dev")
 
-        max_users = user_sub.max_users if user_sub else 2
-        if total_user_count >= max_users:
-            raise HTTPException(
-                status_code=403,
-                detail=ErrorResponseTypDict(
-                    msg="User Limit Reached",
-                    description=f"User limit reached ({total_user_count}/{max_users} users). Please upgrade your plan or add an Extra User add-on.",
-                    success=False,
-                    status_code=403
+        mock_expired = os.getenv("MOCK_SUBSCRIPTION_EXPIRED", "false").lower() == "true"
+        if not is_dev:
+            if mock_expired or (user_sub and user_sub.status == "expired"):
+                raise HTTPException(
+                    status_code=403,
+                    detail=ErrorResponseTypDict(
+                        msg="Subscription Expired",
+                        description="Your subscription has expired. Adding new staff/users is paused until subscription is renewed.",
+                        success=False,
+                        status_code=403
+                    )
                 )
-            )
+
+            max_users = user_sub.max_users if user_sub else 2
+            if total_user_count >= max_users:
+                raise HTTPException(
+                    status_code=403,
+                    detail=ErrorResponseTypDict(
+                        msg="User Limit Reached",
+                        description=f"User limit reached ({total_user_count}/{max_users} users). Please upgrade your plan or add an Extra User add-on.",
+                        success=False,
+                        status_code=403
+                    )
+                )
 
         employee_id=generate_uuid()
         

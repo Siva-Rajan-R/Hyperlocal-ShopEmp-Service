@@ -78,6 +78,9 @@ class DeliveryResponseSchema(BaseModel):
     delivery_charge: Optional[float] = 0.0
     charge_per_km: Optional[float] = 0.0
     radius: Optional[float] = 0.0
+    base_distance: Optional[float] = 0.0
+    extra_distance_step: Optional[float] = 1.0
+    pricing_model: Optional[str] = "FLAT"
     delivery_by: Optional[str] = "PARTNERS"
     enabled: Optional[bool] = True
 

@@ -326,14 +326,14 @@ class ShopService(BaseServiceModel):
             res_dict['image_urls'] = []
 
             hours_list = []
-            if data.operating_hours is not None:
+            if data.operating_hours is not None and len(data.operating_hours) > 0:
                 await self.session.execute(delete(ShopOperatingHours).where(ShopOperatingHours.shop_id == data.id))
                 for hr in data.operating_hours:
                     h_res = await self.shop_repo_obj.add_operating_hours(shop_id=data.id, data=hr)
                     if h_res:
                         hours_list.append(dict(h_res))
             delivery_list = []
-            if data.delivery_options is not None:
+            if data.delivery_options is not None and len(data.delivery_options) > 0:
                 await self.session.execute(delete(ShopDelivery).where(ShopDelivery.shop_id == data.id))
                 for deliv in data.delivery_options:
                     d_res = await self.shop_repo_obj.add_delivery_options(shop_id=data.id, data=deliv)
@@ -376,12 +376,12 @@ class ShopService(BaseServiceModel):
                     conditions={"id": data.id}
                 ).update()
 
-                if data.operating_hours is not None:
+                if data.operating_hours is not None and len(data.operating_hours) > 0:
                     await ReadDbShopService().set_operating_hours(
                         shop_id=data.id,
                         hours_list=[make_serializable(hr) for hr in hours_list]
                     )
-                if data.delivery_options is not None:
+                if data.delivery_options is not None and len(data.delivery_options) > 0:
                     await ReadDbShopService().set_delivery_options(
                         shop_id=data.id,
                         delivery_list=[make_serializable(dl) for dl in delivery_list]
@@ -389,7 +389,8 @@ class ShopService(BaseServiceModel):
             except Exception as e:
                 ic(f"Failed to sync shop update to MongoDB: {e}")
 
-            return res_dict
+            full_shop = await self.shop_repo_obj.get_shop_with_relations(shop_id=data.id)
+            return full_shop if full_shop else res_dict
         return res
 
     
@@ -489,6 +490,15 @@ class ShopService(BaseServiceModel):
                     res['datas'] = res.pop('additional_infos', {}) or {}
                     res['image_urls'] = []
         if res:
+            # If Mongo doc is missing operating_hours or delivery_options, fallback to Postgres
+            if not res.get("operating_hours") or not res.get("delivery_options"):
+                pg_shop = await self.shop_repo_obj.get_shop_with_relations(shop_id=data.shop_id)
+                if pg_shop:
+                    if not res.get("operating_hours") and pg_shop.get("operating_hours"):
+                        res["operating_hours"] = pg_shop.get("operating_hours")
+                    if not res.get("delivery_options") and pg_shop.get("delivery_options"):
+                        res["delivery_options"] = pg_shop.get("delivery_options")
+
             add_infos = res.get('additional_infos') or res.get('datas') or {}
             vis_only = res.get('visibility_only', add_infos.get('visibility_only', False))
             res['visibility_only'] = bool(vis_only)

@@ -732,7 +732,28 @@ class ShopRepo(BaseRepoModel):
         stmt = select(Shops).where(Shops.id == shop_id)
         res = await self.session.execute(stmt)
         shop = res.scalar_one_or_none()
-        return _serialize_shop_model(shop) if shop else None
+        if not shop:
+            return None
+        res_dict = _serialize_shop_model(shop)
+        if res_dict and (not res_dict.get("operating_hours") or not res_dict.get("delivery_options")):
+            try:
+                from infras.read_db.services.shop_service import ReadDbShopService
+                read_service = ReadDbShopService(payload=None, conditions={"id": shop_id})
+                mongo_shop = await read_service.get_one(queries={"id": shop_id})
+                if mongo_shop:
+                    if not res_dict.get("operating_hours") and mongo_shop.get("operating_hours"):
+                        res_dict["operating_hours"] = mongo_shop.get("operating_hours")
+                        res_dict["has_operating_hours"] = True
+                    if not res_dict.get("delivery_options") and mongo_shop.get("delivery_options"):
+                        res_dict["delivery_options"] = mongo_shop.get("delivery_options")
+                        res_dict["has_delivery_options"] = True
+                    res_dict["is_digital_store_configured"] = bool(
+                        res_dict.get("has_operating_hours") or res_dict.get("has_delivery_options") or res_dict.get("visible_online")
+                    )
+                    res_dict["can_show_digital_store_dashboard"] = res_dict["is_digital_store_configured"]
+            except Exception:
+                pass
+        return res_dict
 
     async def get_geofenced_shops(self, data) -> List[dict]:
         stmt = (

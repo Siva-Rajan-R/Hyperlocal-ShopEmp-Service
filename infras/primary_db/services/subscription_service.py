@@ -41,8 +41,8 @@ PLANS_CATALOG = {
     "digital_store": {
         "id": "digital_store",
         "name": "Digital Store",
-        "monthly_price": 399.0,
-        "annual_price": 3990.0,
+        "monthly_price": 299.0,
+        "annual_price": 2990.0,
         "currency": "INR",
         "badge": None,
         "description": "For businesses that want to take their products online without changing their existing system.",
@@ -68,8 +68,9 @@ PLANS_CATALOG = {
     "basic": {
         "id": "basic",
         "name": "Basic",
-        "monthly_price": 999.0,
-        "annual_price": 9990.0,
+        "monthly_price": 699.0,
+        "annual_price": 3500.0,
+        "biennial_price": 7000.0,
         "currency": "INR",
         "badge": "MOST POPULAR",
         "description": "Everything a single location business needs to run the business and grow online.",
@@ -98,8 +99,8 @@ PLANS_CATALOG = {
     "pro": {
         "id": "pro",
         "name": "Pro",
-        "monthly_price": 1799.0,
-        "annual_price": 17990.0,
+        "monthly_price": 1499.0,
+        "annual_price": 14990.0,
         "currency": "INR",
         "badge": None,
         "description": "For growing businesses that manage multiple locations and larger product catalogues.",
@@ -145,7 +146,7 @@ ADDONS_CATALOG = {
         "name": "SKU Expansion",
         "price": 299.0,
         "billing_cycle": "monthly",
-        "description": "Increase catalogue capacity by +5,000 SKUs.",
+        "description": "Increase catalogue capacity from 500 to up to 5,000 SKUs.",
         "type": "sku"
     },
     "verified_badge": {
@@ -168,6 +169,42 @@ class SubscriptionService:
         return {
             "plans": list(PLANS_CATALOG.values()),
             "addons": list(ADDONS_CATALOG.values()),
+            "promotional_offers": {
+                "header": "First 100 Retailers: Basic Plan Offers",
+                "subtext": "Choose annual billing or a 2-year term and get a complimentary verified badge.",
+                "items": [
+                    {
+                        "tag": "FIRST 100 ONLY",
+                        "title": "Basic Annual Plan",
+                        "price": 3500.0,
+                        "period": "/ year",
+                        "savings": "Save 58% vs ₹8,388 at monthly billing",
+                        "description": "Annual Basic subscription",
+                        "plan_id": "basic",
+                        "billing_cycle": "annual"
+                    },
+                    {
+                        "tag": "FIRST 100 ONLY",
+                        "title": "Basic 2-Year Plan",
+                        "price": 7000.0,
+                        "period": "total for 24 months",
+                        "savings": "Save 58% vs ₹16,776 monthly billing",
+                        "description": "Basic plan for the full 2-year term",
+                        "plan_id": "basic",
+                        "billing_cycle": "biennial"
+                    },
+                    {
+                        "tag": "COMPLIMENTARY ADD-ON",
+                        "title": "Verified Business Badge",
+                        "price": 0.0,
+                        "display_price": "FREE",
+                        "savings": "₹699/year value · ₹0 for first 100",
+                        "description": "Issued after successful business verification.",
+                        "is_complimentary": True
+                    }
+                ],
+                "disclaimer": "Annual and 2-year Basic prices are limited to the first 100 retailers. Badge requires successful verification. Taxes extra."
+            },
             "trial_days": 14,
             "razorpay_key_id": key_id,
             "mock_payment": is_mock,
@@ -400,7 +437,13 @@ class SubscriptionService:
         if not plan:
             raise HTTPException(status_code=400, detail="Invalid plan selected")
 
-        base_price = plan["annual_price"] if data.billing_cycle == "annual" else plan["monthly_price"]
+        if data.billing_cycle in ("biennial", "2year"):
+            base_price = 7000.0 if data.plan_id == "basic" else (plan.get("biennial_price") or plan["annual_price"] * 2)
+        elif data.billing_cycle == "annual":
+            base_price = plan["annual_price"]
+        else:
+            base_price = plan["monthly_price"]
+
         addons_total = 0.0
         active_addons_list = []
 
@@ -409,8 +452,15 @@ class SubscriptionService:
             if catalog_addon:
                 qty = max(1, addon_item.quantity)
                 addon_price = catalog_addon["price"] * qty
-                if catalog_addon["billing_cycle"] == "monthly" and data.billing_cycle == "annual":
-                    addon_price = addon_price * 10
+                if catalog_addon["id"] == "verified_badge" and data.plan_id == "basic" and data.billing_cycle in ("annual", "biennial", "2year"):
+                    addon_price = 0.0
+                elif catalog_addon["billing_cycle"] == "monthly":
+                    if data.billing_cycle in ("biennial", "2year"):
+                        addon_price = addon_price * 20
+                    elif data.billing_cycle == "annual":
+                        addon_price = addon_price * 10
+                elif catalog_addon["billing_cycle"] == "year" and data.billing_cycle in ("biennial", "2year"):
+                    addon_price = addon_price * 2
                 addons_total += addon_price
                 active_addons_list.append({
                     "addon_id": catalog_addon["id"],
@@ -563,14 +613,19 @@ class SubscriptionService:
 
         plan = PLANS_CATALOG.get(data.plan_id, PLANS_CATALOG["basic"])
         now = datetime.now(timezone.utc)
-        period_days = 365 if data.billing_cycle == "annual" else 30
+        if data.billing_cycle in ("biennial", "2year"):
+            period_days = 730
+        elif data.billing_cycle == "annual":
+            period_days = 365
+        else:
+            period_days = 30
         period_end = now + timedelta(days=period_days)
 
         max_locations = plan["limits"]["max_locations"]
         max_users = plan["limits"]["max_users"]
         max_skus = plan["limits"]["max_skus"]
         max_digital_stores = plan["limits"]["max_digital_stores"]
-        is_verified_badge = False
+        is_verified_badge = True if (data.plan_id == "basic" and data.billing_cycle in ("annual", "biennial", "2year")) else False
 
         active_addons = []
         for addon_item in data.addons:

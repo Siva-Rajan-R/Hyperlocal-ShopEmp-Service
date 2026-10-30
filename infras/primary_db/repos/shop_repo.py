@@ -370,17 +370,21 @@ class ShopRepo(BaseRepoModel):
     # --- Operating Hours CRUD ---
     @start_db_transaction
     async def add_operating_hours(self, shop_id: str, data: CreateOperatingHoursSchema) -> dict | None:
+        day_str = data.day.value if hasattr(data.day, "value") else str(data.day).upper()
+        open_time = data.open_at.replace(tzinfo=None) if hasattr(data.open_at, "replace") else data.open_at
+        close_time = data.close_at.replace(tzinfo=None) if hasattr(data.close_at, "replace") else data.close_at
+
         # Check if operating hours for this day already exists
         check_stmt = select(ShopOperatingHours).where(
             and_(
                 ShopOperatingHours.shop_id == shop_id,
-                ShopOperatingHours.day == data.day
+                ShopOperatingHours.day == day_str
             )
         )
         existing = (await self.session.execute(check_stmt)).scalar_one_or_none()
         if existing:
-            existing.open_at = data.open_at
-            existing.close_at = data.close_at
+            existing.open_at = open_time
+            existing.close_at = close_time
             await self.session.flush()
             return {
                 "id": existing.id,
@@ -390,8 +394,12 @@ class ShopRepo(BaseRepoModel):
                 "day": existing.day
             }
 
-        values = data.model_dump()
-        values["shop_id"] = shop_id
+        values = {
+            "shop_id": shop_id,
+            "day": day_str,
+            "open_at": open_time,
+            "close_at": close_time
+        }
         stmt = insert(ShopOperatingHours).values(**values).returning(
             ShopOperatingHours.id,
             ShopOperatingHours.shop_id,
@@ -416,6 +424,14 @@ class ShopRepo(BaseRepoModel):
     @start_db_transaction
     async def update_operating_hours(self, hours_id: int, data: UpdateOperatingHoursSchema) -> dict | None:
         values = data.model_dump(exclude={"id"}, exclude_unset=True, exclude_none=True)
+        if "day" in values and hasattr(values["day"], "value"):
+            values["day"] = values["day"].value.upper()
+        elif "day" in values and values["day"] is not None:
+            values["day"] = str(values["day"]).upper()
+        if "open_at" in values and hasattr(values["open_at"], "replace"):
+            values["open_at"] = values["open_at"].replace(tzinfo=None)
+        if "close_at" in values and hasattr(values["close_at"], "replace"):
+            values["close_at"] = values["close_at"].replace(tzinfo=None)
         stmt = update(ShopOperatingHours).where(ShopOperatingHours.id == hours_id).values(**values).returning(
             ShopOperatingHours.id,
             ShopOperatingHours.shop_id,

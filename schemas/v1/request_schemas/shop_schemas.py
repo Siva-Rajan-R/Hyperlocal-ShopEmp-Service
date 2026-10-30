@@ -101,7 +101,7 @@ class GetBulkShopsByIdSchema(BaseModel):
 class GetGeofencedShopsSchema(BaseModel):
     latitude: float
     longitude: float
-    delivery_type: DeliveryTypeEnum
+    delivery_type: Optional[DeliveryTypeEnum] = None
     limit: Optional[int] = Field(default=20, le=100)
     offset: Optional[int] = Field(default=1)
     timezone: Optional[TimeZoneEnum] = Field(default=TimeZoneEnum.Asia_Kolkata)

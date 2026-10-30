@@ -772,18 +772,22 @@ class ShopRepo(BaseRepoModel):
         return res_dict
 
     async def get_geofenced_shops(self, data) -> List[dict]:
-        stmt = (
-            select(Shops)
-            .join(ShopDelivery, ShopDelivery.shop_id == Shops.id)
-            .where(
-                and_(
-                    Shops.visible_online == True,
-                    ShopDelivery.type == data.delivery_type.value,
-                    or_(ShopDelivery.enabled == True, ShopDelivery.enabled == None)
+        if getattr(data, "delivery_type", None):
+            dt_val = data.delivery_type.value if hasattr(data.delivery_type, "value") else str(data.delivery_type)
+            stmt = (
+                select(Shops)
+                .join(ShopDelivery, ShopDelivery.shop_id == Shops.id)
+                .where(
+                    and_(
+                        Shops.visible_online == True,
+                        ShopDelivery.type == dt_val,
+                        or_(ShopDelivery.enabled == True, ShopDelivery.enabled == None)
+                    )
                 )
+                .distinct()
             )
-            .distinct()
-        )
+        else:
+            stmt = select(Shops).where(Shops.visible_online == True)
         res = await self.session.execute(stmt)
         shops = res.scalars().all()
         return [_serialize_shop_model(s) for s in shops if s]

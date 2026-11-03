@@ -239,8 +239,10 @@ class HandleShopRequest:
             )
         raise HTTPException(status_code=400, detail="Failed to add delivery options")
 
-    async def get_delivery_options(self, shop_id: str):
-        res = await ShopService(session=self.session).get_delivery_options(shop_id=shop_id)
+    async def get_delivery_options(self, shop_id: str, latitude: Optional[float] = None, longitude: Optional[float] = None, user_id: Optional[str] = None):
+        res = await ShopService(session=self.session).get_delivery_options(
+            shop_id=shop_id, latitude=latitude, longitude=longitude, user_id=user_id
+        )
         return SuccessResponseTypDict(
             detail=BaseResponseTypDict(
                 msg="Delivery options fetched successfully",

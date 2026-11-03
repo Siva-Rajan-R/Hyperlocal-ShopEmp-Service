@@ -685,9 +685,130 @@ class ShopService(BaseServiceModel):
                 ic(f"Failed to sync delivery options to MongoDB: {e}")
         return res
 
-    async def get_delivery_options(self, shop_id: str) -> List[dict]:
+    async def get_delivery_options(self, shop_id: str, latitude: Optional[float] = None, longitude: Optional[float] = None, user_id: Optional[str] = None) -> List[dict]:
         res = await self.shop_repo_obj.get_delivery_options(shop_id=shop_id)
-        return res
+        if not res:
+            return res
+
+        if latitude is None and longitude is None:
+            return res
+
+        user_lat = latitude
+        user_lon = longitude
+
+        # If coordinates not passed in query params, resolve from user_id's default address
+        if (user_lat is None or user_lon is None) and user_id:
+            try:
+                import os
+                from motor.motor_asyncio import AsyncIOMotorClient
+                mongo_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+                client = AsyncIOMotorClient(mongo_url, serverSelectionTimeoutMS=1000)
+                db = client["DigitalStoreUserServiceDb"]
+                user_doc = await db.users.find_one({"user_id": user_id})
+                if user_doc and user_doc.get("addresses"):
+                    addresses = user_doc.get("addresses") or []
+                    addr = next((a for a in addresses if a.get("is_default")), addresses[0] if addresses else None)
+                    if addr:
+                        user_lat = addr.get("latitude")
+                        user_lon = addr.get("longitude")
+            except Exception as e:
+                ic(f"Failed to resolve user coordinates from user_id: {e}")
+
+        if user_lat is None or user_lon is None:
+            return res
+
+        try:
+            shop_dict = await self.shop_repo_obj.get_shop_with_relations(shop_id=shop_id)
+            if not shop_dict:
+                return res
+
+            address = shop_dict.get("address") or {}
+            shop_lat_raw = address.get("latitude") if address.get("latitude") is not None else address.get("lat")
+            shop_lon_raw = address.get("longitude") if address.get("longitude") is not None else address.get("lng")
+            if shop_lat_raw is None or shop_lon_raw is None:
+                return res
+
+            user_lat = float(user_lat)
+            user_lon = float(user_lon)
+            shop_lat = float(shop_lat_raw)
+            shop_lon = float(shop_lon_raw)
+
+            def haversine(lat1, lon1, lat2, lon2):
+                R = 6371.0
+                dlat = math.radians(lat2 - lat1)
+                dlon = math.radians(lon2 - lon1)
+                a = math.sin(dlat / 2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon / 2)**2
+                c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+                return R * c
+
+            dist = haversine(user_lat, user_lon, shop_lat, shop_lon)
+
+            default_radius_map = {
+                "PICKUP_ONLY": 25.0,
+                "INSTANT": 25.0,
+                "STANDARD": 300.0,
+                "NATIONWIDE": float('inf')
+            }
+
+            pickup_opt = None
+            instant_opt = None
+            standard_opt = None
+            nationwide_opt = None
+
+            for d in res:
+                if not d or d.get("enabled") is False:
+                    continue
+                raw_type = (d.get("type") or "").upper()
+                if raw_type == "PICKUP_ONLY":
+                    pickup_opt = d
+                elif raw_type in ("INSTANT", "EXPRESS"):
+                    instant_opt = d
+                elif raw_type in ("STANDARD", "NORMAL"):
+                    standard_opt = d
+                elif raw_type in ("NATIONWIDE", "SAME_DAY"):
+                    nationwide_opt = d
+
+            def is_covered(opt, default_r):
+                if not opt:
+                    return False
+                if default_r == float('inf'):
+                    return True
+                configured_r = None
+                raw_r = opt.get("radius")
+                if raw_r is not None:
+                    try:
+                        r = float(raw_r)
+                        if r > 0:
+                            configured_r = r
+                    except (ValueError, TypeError):
+                        pass
+                max_r = configured_r if configured_r is not None else default_r
+                return dist <= max_r
+
+            pickup_covered = is_covered(pickup_opt, default_radius_map.get("PICKUP_ONLY", 25.0))
+            instant_covered = is_covered(instant_opt, default_radius_map.get("INSTANT", 25.0))
+            standard_covered = is_covered(standard_opt, default_radius_map.get("STANDARD", 300.0))
+            nationwide_covered = is_covered(nationwide_opt, float('inf'))
+
+            acceptable_options = []
+            if pickup_covered and pickup_opt:
+                acceptable_options.append(pickup_opt)
+
+            # Proximity hierarchy:
+            # 1. If near & covered by Instant: ONLY Instant home delivery is accepted (Standard/Nationwide suppressed)
+            # 2. Else if covered by Standard: Standard home delivery
+            # 3. Else if covered by Nationwide: Nationwide delivery
+            if instant_covered and instant_opt:
+                acceptable_options.append(instant_opt)
+            elif standard_covered and standard_opt:
+                acceptable_options.append(standard_opt)
+            elif nationwide_covered and nationwide_opt:
+                acceptable_options.append(nationwide_opt)
+
+            return acceptable_options
+        except Exception as e:
+            ic(f"Error filtering delivery options by location: {e}")
+            return res
 
     async def update_delivery_options(self, delivery_id: int, data: UpdateDeliverySchema) -> dict | None:
         res = await self.shop_repo_obj.update_delivery_options(delivery_id=delivery_id, data=data)
@@ -914,28 +1035,31 @@ class ShopService(BaseServiceModel):
                 max_r = configured_r if configured_r is not None else default_r
                 return dist <= max_r
 
-            pickup_covered = is_covered(pickup_opt, default_radius_map.get("PICKUP_ONLY", 25.0))
-            instant_covered = is_covered(instant_opt, default_radius_map.get("INSTANT", 25.0))
-            standard_covered = is_covered(standard_opt, default_radius_map.get("STANDARD", 300.0))
-            nationwide_covered = is_covered(nationwide_opt, float('inf'))
+            if dist is None:
+                # If distance cannot be computed, preserve configured delivery options
+                acceptable_options = [d for d in delivery_options if d and d.get("enabled") is not False]
+            else:
+                pickup_covered = is_covered(pickup_opt, default_radius_map.get("PICKUP_ONLY", 25.0))
+                instant_covered = is_covered(instant_opt, default_radius_map.get("INSTANT", 25.0))
+                standard_covered = is_covered(standard_opt, default_radius_map.get("STANDARD", 300.0))
+                nationwide_covered = is_covered(nationwide_opt, float('inf'))
 
-            # Acceptable delivery options based on location proximity
-            acceptable_options = []
-            if pickup_covered:
-                acceptable_options.append(pickup_opt)
+                acceptable_options = []
+                if pickup_covered and pickup_opt:
+                    acceptable_options.append(pickup_opt)
 
-            # Hierarchical home delivery selection:
-            # If near and covered by Instant: accept ONLY Instant (Standard/Nationwide suppressed for this near location)
-            # Else if covered by Standard: accept Standard
-            # Else if covered by Nationwide: accept Nationwide
-            if instant_covered:
-                acceptable_options.append(instant_opt)
-            elif standard_covered:
-                acceptable_options.append(standard_opt)
-            elif nationwide_covered:
-                acceptable_options.append(nationwide_opt)
+                # Hierarchical home delivery selection:
+                # If near and covered by Instant: show the best delivery option (ONLY Instant; Standard & Nationwide cut off)
+                # Else if covered by Standard: show Standard
+                # Else if covered by Nationwide: show Nationwide
+                if instant_covered and instant_opt:
+                    acceptable_options.append(instant_opt)
+                elif standard_covered and standard_opt:
+                    acceptable_options.append(standard_opt)
+                elif nationwide_covered and nationwide_opt:
+                    acceptable_options.append(nationwide_opt)
 
-            # Narrow by explicit filter if requested
+            # If user explicitly filtered by a specific delivery type tab, apply narrow filter
             if target_deliv_type:
                 acceptable_options = [
                     opt for opt in acceptable_options
@@ -944,9 +1068,11 @@ class ShopService(BaseServiceModel):
                        (target_deliv_type == "STANDARD" and (opt.get("type") or "").upper() == "NORMAL") or
                        (target_deliv_type == "NATIONWIDE" and (opt.get("type") or "").upper() == "SAME_DAY")
                 ]
+                # Only exclude shop if user specifically filtered by delivery_type
+                if not acceptable_options:
+                    continue
 
-            if not acceptable_options:
-                continue
+            # DO NOT continue/skip shop if target_deliv_type was None! All shops need to show!
 
             shop_copy = dict(shop)
             shop_copy["delivery_options"] = acceptable_options

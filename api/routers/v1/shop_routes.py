@@ -1,4 +1,4 @@
-from fastapi import APIRouter,Depends,Query,Header,File,UploadFile,Form
+from fastapi import APIRouter,Depends,Query,Header,File,UploadFile,Form,Request
 from infras.primary_db.main import get_pg_async_session,AsyncSession
 from ...handlers.shop import (
     HandleShopRequest,CreateShopSchema,UpdateShopSchema,DeleteShopSchema,TimeZoneEnum,Optional,
@@ -239,9 +239,25 @@ async def add_delivery_options(
 @router.get('/{shop_id}/delivery')
 async def get_delivery_options(
     shop_id: str,
-    session: PG_ASYNC_SESSION
+    session: PG_ASYNC_SESSION,
+    request: Request,
+    latitude: Optional[float] = Query(default=None),
+    longitude: Optional[float] = Query(default=None),
 ):
-    return await HandleShopRequest(session=session).get_delivery_options(shop_id=shop_id)
+    import json
+    user_id = None
+    x_user_infos = request.headers.get("x-user-infos")
+    if x_user_infos:
+        try:
+            user_id = json.loads(x_user_infos).get("user_id")
+        except Exception:
+            pass
+    if not user_id:
+        user_id = request.headers.get("x-user-id")
+
+    return await HandleShopRequest(session=session).get_delivery_options(
+        shop_id=shop_id, latitude=latitude, longitude=longitude, user_id=user_id
+    )
 
 @router.put('/delivery/{delivery_id}')
 async def update_delivery_options(

@@ -961,6 +961,7 @@ class ShopService(BaseServiceModel):
             
         default_radius_map = {
             "PICKUP_ONLY": 25.0,
+            "DELIVERY": 15.0,
             "INSTANT": 25.0,
             "STANDARD": 300.0,
             "NATIONWIDE": float('inf')
@@ -999,6 +1000,7 @@ class ShopService(BaseServiceModel):
 
             delivery_options = shop.get("delivery_options") or []
             pickup_opt = None
+            delivery_opt = None
             instant_opt = None
             standard_opt = None
             nationwide_opt = None
@@ -1007,8 +1009,10 @@ class ShopService(BaseServiceModel):
                 if not d or d.get("enabled") is False:
                     continue
                 raw_type = (d.get("type") or "").upper()
-                if raw_type == "PICKUP_ONLY":
+                if raw_type in ("PICKUP_ONLY", "PICKUP", "STORE_PICKUP"):
                     pickup_opt = d
+                elif raw_type == "DELIVERY":
+                    delivery_opt = d
                 elif raw_type in ("INSTANT", "EXPRESS"):
                     instant_opt = d
                 elif raw_type in ("STANDARD", "NORMAL"):
@@ -1016,8 +1020,11 @@ class ShopService(BaseServiceModel):
                 elif raw_type in ("NATIONWIDE", "SAME_DAY"):
                     nationwide_opt = d
 
+            if not delivery_opt:
+                delivery_opt = instant_opt or standard_opt or nationwide_opt
+
             def is_covered(opt, default_r):
-                if not opt:
+                if not opt or opt.get("enabled") is False:
                     return False
                 if default_r == float('inf'):
                     return True
@@ -1040,6 +1047,7 @@ class ShopService(BaseServiceModel):
                 acceptable_options = [d for d in delivery_options if d and d.get("enabled") is not False]
             else:
                 pickup_covered = is_covered(pickup_opt, default_radius_map.get("PICKUP_ONLY", 25.0))
+                delivery_covered = is_covered(delivery_opt, default_radius_map.get("DELIVERY", 15.0))
                 instant_covered = is_covered(instant_opt, default_radius_map.get("INSTANT", 25.0))
                 standard_covered = is_covered(standard_opt, default_radius_map.get("STANDARD", 300.0))
                 nationwide_covered = is_covered(nationwide_opt, float('inf'))
@@ -1048,31 +1056,32 @@ class ShopService(BaseServiceModel):
                 if pickup_covered and pickup_opt:
                     acceptable_options.append(pickup_opt)
 
-                # Hierarchical home delivery selection:
-                # If near and covered by Instant: show the best delivery option (ONLY Instant; Standard & Nationwide cut off)
-                # Else if covered by Standard: show Standard
-                # Else if covered by Nationwide: show Nationwide
-                if instant_covered and instant_opt:
+                if delivery_covered and delivery_opt:
+                    acceptable_options.append(delivery_opt)
+                elif instant_covered and instant_opt:
                     acceptable_options.append(instant_opt)
                 elif standard_covered and standard_opt:
                     acceptable_options.append(standard_opt)
                 elif nationwide_covered and nationwide_opt:
                     acceptable_options.append(nationwide_opt)
 
-            # If user explicitly filtered by a specific delivery type tab, apply narrow filter
+            # If user explicitly filtered by a specific delivery type, apply filter
             if target_deliv_type:
-                acceptable_options = [
-                    opt for opt in acceptable_options
-                    if (opt.get("type") or "").upper() == target_deliv_type or
-                       (target_deliv_type == "INSTANT" and (opt.get("type") or "").upper() == "EXPRESS") or
-                       (target_deliv_type == "STANDARD" and (opt.get("type") or "").upper() == "NORMAL") or
-                       (target_deliv_type == "NATIONWIDE" and (opt.get("type") or "").upper() == "SAME_DAY")
-                ]
-                # Only exclude shop if user specifically filtered by delivery_type
-                if not acceptable_options:
-                    continue
+                t_deliv = target_deliv_type.upper()
+                if t_deliv in ("PICKUP_ONLY", "PICKUP"):
+                    acceptable_options = [
+                        opt for opt in acceptable_options
+                        if (opt.get("type") or "").upper() in ("PICKUP_ONLY", "PICKUP", "STORE_PICKUP")
+                    ]
+                else:
+                    acceptable_options = [
+                        opt for opt in acceptable_options
+                        if (opt.get("type") or "").upper() not in ("PICKUP_ONLY", "PICKUP", "STORE_PICKUP")
+                    ]
 
-            # DO NOT continue/skip shop if target_deliv_type was None! All shops need to show!
+            # ONLY show shop if it has at least one valid delivery option covering user location
+            if dist is not None and not acceptable_options:
+                continue
 
             shop_copy = dict(shop)
             shop_copy["delivery_options"] = acceptable_options

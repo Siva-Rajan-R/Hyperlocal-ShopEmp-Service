@@ -30,6 +30,7 @@ class DayEnum(str, Enum):
 
 class DeliveryTypeEnum(str, Enum):
     PICKUP_ONLY = "PICKUP_ONLY"
+    DELIVERY = "DELIVERY"
     INSTANT = "INSTANT"
     STANDARD = "STANDARD"
     NATIONWIDE = "NATIONWIDE"

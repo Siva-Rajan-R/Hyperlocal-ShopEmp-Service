@@ -17,7 +17,7 @@ from fastapi.exceptions import HTTPException
 from hyperlocal_platform.core.enums.timezone_enum import TimeZoneEnum
 from sqlalchemy.ext.asyncio import AsyncSession
 from hyperlocal_platform.core.utils.uuid_generator import generate_uuid
-from typing import Optional,List
+from typing import Any, Dict, Optional, List
 from hyperlocal_platform.core.decorators.db_session_handler_dec import start_db_transaction
 from icecream import ic
 
@@ -25,6 +25,103 @@ class ShopService(BaseServiceModel):
     def __init__(self, session:AsyncSession):
         super().__init__(session)
         self.shop_repo_obj=ShopRepo(session=session)
+
+    @staticmethod
+    def _make_serializable(item):
+        if not item:
+            return item
+        new_item = dict(item)
+        for k, v in new_item.items():
+            if hasattr(v, 'isoformat'):
+                new_item[k] = v.isoformat()
+            elif hasattr(v, 'strftime'):
+                new_item[k] = str(v)
+        return new_item
+
+    async def _commit_if_in_transaction(self):
+        # Prior read queries trigger SQLAlchemy autobegin, which causes @start_db_transaction
+        # on subsequent repo calls to skip committing unless explicitly flushed/committed here.
+        if self.session.in_transaction():
+            await self.session.commit()
+
+    async def _sync_delivery_options_to_mongo(self, shop_id: str):
+        try:
+            from infras.read_db.services.shop_service import ReadDbShopService
+            pg_delivery = await self.shop_repo_obj.get_delivery_options(shop_id=shop_id) or []
+            await ReadDbShopService().set_delivery_options(
+                shop_id=shop_id,
+                delivery_list=[self._make_serializable(d) for d in pg_delivery]
+            )
+        except Exception as e:
+            ic(f"Failed to sync delivery options to MongoDB: {e}")
+
+    async def _restore_relations_from_mongo_if_empty(
+        self,
+        shop_id: str,
+        need_hours: bool = False,
+        need_delivery: bool = False
+    ) -> tuple[list[dict], list[dict]]:
+        """Backfill Postgres operating hours / delivery options from MongoDB when Postgres is empty."""
+        restored_hours: list[dict] = []
+        restored_delivery: list[dict] = []
+        if not need_hours and not need_delivery:
+            return restored_hours, restored_delivery
+
+        try:
+            from infras.read_db.services.shop_service import ReadDbShopService
+            read_service = ReadDbShopService()
+            mongo_shop = await read_service.get_one(queries={"id": shop_id})
+            if not mongo_shop:
+                return restored_hours, restored_delivery
+
+            if need_hours:
+                mongo_hours = mongo_shop.get("operating_hours") or []
+                for hr in mongo_hours:
+                    if not isinstance(hr, dict) or not hr.get("day"):
+                        continue
+                    try:
+                        hr_schema = CreateOperatingHoursSchema(
+                            day=str(hr["day"]).upper(),
+                            open_at=hr.get("open_at") or "09:00:00",
+                            close_at=hr.get("close_at") or "21:00:00",
+                        )
+                        h_res = await self.shop_repo_obj.add_operating_hours(shop_id=shop_id, data=hr_schema)
+                        if h_res:
+                            restored_hours.append(dict(h_res))
+                    except Exception as item_err:
+                        ic(f"Skipping invalid operating hour from MongoDB during sync: {item_err}")
+
+            if need_delivery:
+                mongo_deliv = mongo_shop.get("delivery_options") or []
+                allowed_fields = set(CreateDeliverySchema.model_fields.keys())
+                for deliv in mongo_deliv:
+                    if not isinstance(deliv, dict) or not deliv.get("type"):
+                        continue
+                    try:
+                        deliv_data = {
+                            k: v for k, v in deliv.items()
+                            if k in allowed_fields and v is not None
+                        }
+                        deliv_schema = CreateDeliverySchema(**deliv_data)
+                        d_res = await self.shop_repo_obj.add_delivery_options(shop_id=shop_id, data=deliv_schema)
+                        if d_res:
+                            restored_delivery.append(dict(d_res))
+                    except Exception as item_err:
+                        ic(f"Skipping invalid delivery option from MongoDB during sync: {item_err}")
+
+            if restored_hours or restored_delivery:
+                await self._commit_if_in_transaction()
+                if restored_hours:
+                    await read_service.set_operating_hours(
+                        shop_id=shop_id,
+                        hours_list=[self._make_serializable(h) for h in restored_hours]
+                    )
+                if restored_delivery:
+                    await self._sync_delivery_options_to_mongo(shop_id=shop_id)
+        except Exception as e:
+            ic(f"Failed to restore relations from MongoDB for shop {shop_id}: {e}")
+
+        return restored_hours, restored_delivery
 
 
     async def create(self, data:CreateShopSchema, user_id:str)-> dict | None:
@@ -113,6 +210,8 @@ class ShopService(BaseServiceModel):
                     d_res = await self.shop_repo_obj.add_delivery_options(shop_id=shop_id, data=deliv)
                     if d_res:
                         delivery_list.append(dict(d_res))
+
+            await self._commit_if_in_transaction()
             
             # Sync to MongoDB
             try:
@@ -267,18 +366,73 @@ class ShopService(BaseServiceModel):
         return res
         
     
+    @staticmethod
+    def _extract_vacation_state(additional_infos: Any) -> tuple[bool, str]:
+        info = additional_infos if isinstance(additional_infos, dict) else {}
+        vac_infos = info.get("vacation_infos") if isinstance(info.get("vacation_infos"), dict) else {}
+        if isinstance(info.get("vacation_mode"), bool):
+            enabled = info["vacation_mode"]
+        else:
+            enabled = vac_infos.get("enabled") is True
+        msg = str(info.get("vacation_message") or vac_infos.get("message") or "").strip()
+        return enabled, msg
+
+    async def _notify_shop_followers(
+        self,
+        *,
+        shop_id: str,
+        title_template: str,
+        message: str,
+        notif_type: str = "info",
+        shop_name_override: Optional[str] = None,
+        extra_meta: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        try:
+            followers = await self.get_shop_followers(shop_id=shop_id)
+            if not followers:
+                return
+            shop_name = shop_name_override
+            if not shop_name:
+                shop = await self.shop_repo_obj.get_shop_with_relations(shop_id=shop_id)
+                shop_name = (shop or {}).get("name") or "A shop you follow"
+            title = title_template.format(shop_name=shop_name)
+            meta = {"shop_id": shop_id, "shop_name": shop_name, "audience": "customer", **(extra_meta or {})}
+            from integrations.notification_service import send_notification
+            await send_notification(
+                title=title,
+                message=message,
+                notif_type=notif_type,
+                user_ids=followers,
+                target_type="particular",
+                additional_metadata=meta,
+            )
+        except Exception as e:
+            ic(f"Failed notifying followers for shop {shop_id}: {e}")
+
     async def update(self, data:UpdateShopSchema, user_id:str)-> dict | None:
         ic("Update service started")
         
         # Only validate hours and delivery when explicitly setting visible_online=True
         is_turning_online = data.visible_online is True
         if is_turning_online:
-            payload_hours_count = len(data.operating_hours) if data.operating_hours is not None else 0
-            db_hours_count = await self.shop_repo_obj.count_operating_hours(data.id) if data.operating_hours is None else 0
-            total_hours = payload_hours_count + db_hours_count
+            payload_hours_count = len(data.operating_hours) if data.operating_hours else 0
+            db_hours_count = await self.shop_repo_obj.count_operating_hours(data.id) if payload_hours_count == 0 else 0
 
-            payload_delivery_count = len(data.delivery_options) if data.delivery_options is not None else 0
-            db_delivery_count = await self.shop_repo_obj.count_delivery_options(data.id) if data.delivery_options is None else 0
+            payload_delivery_count = len(data.delivery_options) if data.delivery_options else 0
+            db_delivery_count = await self.shop_repo_obj.count_delivery_options(data.id) if payload_delivery_count == 0 else 0
+
+            need_hours_restore = payload_hours_count == 0 and db_hours_count == 0
+            need_delivery_restore = payload_delivery_count == 0 and db_delivery_count == 0
+            if need_hours_restore or need_delivery_restore:
+                restored_hours, restored_delivery = await self._restore_relations_from_mongo_if_empty(
+                    shop_id=data.id,
+                    need_hours=need_hours_restore,
+                    need_delivery=need_delivery_restore,
+                )
+                db_hours_count += len(restored_hours)
+                db_delivery_count += len(restored_delivery)
+
+            total_hours = payload_hours_count + db_hours_count
             total_delivery = payload_delivery_count + db_delivery_count
 
             if total_hours == 0 or total_delivery == 0:
@@ -287,12 +441,16 @@ class ShopService(BaseServiceModel):
                     detail="Shop operating hours and delivery are mandatory when shop is visible online. Please add them first."
                 )
 
+        # Capture previous shop state before updating (needed for additional_infos merge & vacation notification)
+        existing_shop = await self.shop_repo_obj.get_shop_with_relations(data.id)
+        old_add_infos = (existing_shop.get("additional_infos") if existing_shop else {}) or {}
+        old_vac_enabled, old_vac_msg = self._extract_vacation_state(old_add_infos)
+
         db_payload = data.model_dump(mode="json", exclude={"operating_hours", "delivery_options", "visibility_only", "is_ordering_enabled"}, exclude_unset=True, exclude_none=True)
         
         # Handle visibility_only, is_ordering_enabled, and additional_infos merging
         if data.visibility_only is not None or data.is_ordering_enabled is not None or "additional_infos" in db_payload:
-            existing_shop = await self.shop_repo_obj.get_shop_with_relations(data.id)
-            existing_add = dict((existing_shop.get("additional_infos") if existing_shop else {}) or {})
+            existing_add = dict(old_add_infos)
             if "additional_infos" in db_payload and isinstance(db_payload["additional_infos"], dict):
                 existing_add.update(db_payload["additional_infos"])
             ret_p = existing_add.get("return_policy") or existing_add.pop("refund_policy", None)
@@ -339,6 +497,8 @@ class ShopService(BaseServiceModel):
                     d_res = await self.shop_repo_obj.add_delivery_options(shop_id=data.id, data=deliv)
                     if d_res:
                         delivery_list.append(dict(d_res))
+
+            await self._commit_if_in_transaction()
 
             # Sync to MongoDB
             try:
@@ -388,6 +548,29 @@ class ShopService(BaseServiceModel):
                     )
             except Exception as e:
                 ic(f"Failed to sync shop update to MongoDB: {e}")
+
+            new_vac_enabled, new_vac_msg = self._extract_vacation_state(add_infos)
+            if new_vac_enabled != old_vac_enabled or (new_vac_enabled and new_vac_msg and new_vac_msg != old_vac_msg):
+                shop_name = res_dict.get("name") or (existing_shop or {}).get("name") or "A shop you follow"
+                if new_vac_enabled:
+                    vac_message = new_vac_msg or f"{shop_name} is temporarily in vacation mode and paused accepting online orders."
+                    await self._notify_shop_followers(
+                        shop_id=data.id,
+                        title_template="{shop_name} is on Vacation",
+                        message=vac_message,
+                        notif_type="warning",
+                        shop_name_override=shop_name,
+                        extra_meta={"event_type": "SHOP_VACATION_MODE", "vacation_mode": True},
+                    )
+                else:
+                    await self._notify_shop_followers(
+                        shop_id=data.id,
+                        title_template="{shop_name} is Back Open!",
+                        message=f"{shop_name} has ended vacation mode and is accepting online orders again.",
+                        notif_type="success",
+                        shop_name_override=shop_name,
+                        extra_meta={"event_type": "SHOP_VACATION_MODE", "vacation_mode": False},
+                    )
 
             full_shop = await self.shop_repo_obj.get_shop_with_relations(shop_id=data.id)
             return full_shop if full_shop else res_dict
@@ -603,43 +786,31 @@ class ShopService(BaseServiceModel):
     async def add_operating_hours(self, shop_id: str, data: CreateOperatingHoursSchema) -> dict | None:
         res = await self.shop_repo_obj.add_operating_hours(shop_id=shop_id, data=data)
         if res:
+            await self._commit_if_in_transaction()
             try:
                 from infras.read_db.services.shop_service import ReadDbShopService
-                def make_serializable(item):
-                    if not item:
-                        return item
-                    new_item = dict(item)
-                    for k, v in new_item.items():
-                        if hasattr(v, 'isoformat'):
-                            new_item[k] = v.isoformat()
-                        elif hasattr(v, 'strftime'):
-                            new_item[k] = str(v)
-                    return new_item
-                await ReadDbShopService().add_operating_hours(shop_id=shop_id, hours=make_serializable(res))
+                await ReadDbShopService().add_operating_hours(shop_id=shop_id, hours=self._make_serializable(res))
             except Exception as e:
                 ic(f"Failed to sync operating hours to MongoDB: {e}")
         return res
 
     async def get_operating_hours(self, shop_id: str) -> List[dict]:
         res = await self.shop_repo_obj.get_operating_hours(shop_id=shop_id)
+        if not res:
+            restored_hours, _ = await self._restore_relations_from_mongo_if_empty(
+                shop_id=shop_id, need_hours=True, need_delivery=False
+            )
+            if restored_hours:
+                res = await self.shop_repo_obj.get_operating_hours(shop_id=shop_id)
         return res
 
     async def update_operating_hours(self, hours_id: int, data: UpdateOperatingHoursSchema) -> dict | None:
         res = await self.shop_repo_obj.update_operating_hours(hours_id=hours_id, data=data)
         if res:
+            await self._commit_if_in_transaction()
             try:
                 from infras.read_db.services.shop_service import ReadDbShopService
-                def make_serializable(item):
-                    if not item:
-                        return item
-                    new_item = dict(item)
-                    for k, v in new_item.items():
-                        if hasattr(v, 'isoformat'):
-                            new_item[k] = v.isoformat()
-                        elif hasattr(v, 'strftime'):
-                            new_item[k] = str(v)
-                    return new_item
-                await ReadDbShopService().update_operating_hours(hours_id=hours_id, hours=make_serializable(res))
+                await ReadDbShopService().update_operating_hours(hours_id=hours_id, hours=self._make_serializable(res))
             except Exception as e:
                 ic(f"Failed to sync operating hours update to MongoDB: {e}")
         return res
@@ -657,6 +828,7 @@ class ShopService(BaseServiceModel):
                     )
         res = await self.shop_repo_obj.delete_operating_hours(hours_id=hours_id)
         if res:
+            await self._commit_if_in_transaction()
             try:
                 from infras.read_db.services.shop_service import ReadDbShopService
                 await ReadDbShopService().delete_operating_hours(hours_id=hours_id)
@@ -668,25 +840,18 @@ class ShopService(BaseServiceModel):
     async def add_delivery_options(self, shop_id: str, data: CreateDeliverySchema) -> dict | None:
         res = await self.shop_repo_obj.add_delivery_options(shop_id=shop_id, data=data)
         if res:
-            try:
-                from infras.read_db.services.shop_service import ReadDbShopService
-                def make_serializable(item):
-                    if not item:
-                        return item
-                    new_item = dict(item)
-                    for k, v in new_item.items():
-                        if hasattr(v, 'isoformat'):
-                            new_item[k] = v.isoformat()
-                        elif hasattr(v, 'strftime'):
-                            new_item[k] = str(v)
-                    return new_item
-                await ReadDbShopService().add_delivery_options(shop_id=shop_id, delivery=make_serializable(res))
-            except Exception as e:
-                ic(f"Failed to sync delivery options to MongoDB: {e}")
+            await self._commit_if_in_transaction()
+            await self._sync_delivery_options_to_mongo(shop_id=shop_id)
         return res
 
     async def get_delivery_options(self, shop_id: str, latitude: Optional[float] = None, longitude: Optional[float] = None, user_id: Optional[str] = None) -> List[dict]:
         res = await self.shop_repo_obj.get_delivery_options(shop_id=shop_id)
+        if not res:
+            _, restored_delivery = await self._restore_relations_from_mongo_if_empty(
+                shop_id=shop_id, need_hours=False, need_delivery=True
+            )
+            if restored_delivery:
+                res = await self.shop_repo_obj.get_delivery_options(shop_id=shop_id)
         if not res:
             return res
 
@@ -813,21 +978,10 @@ class ShopService(BaseServiceModel):
     async def update_delivery_options(self, delivery_id: int, data: UpdateDeliverySchema) -> dict | None:
         res = await self.shop_repo_obj.update_delivery_options(delivery_id=delivery_id, data=data)
         if res:
-            try:
-                from infras.read_db.services.shop_service import ReadDbShopService
-                def make_serializable(item):
-                    if not item:
-                        return item
-                    new_item = dict(item)
-                    for k, v in new_item.items():
-                        if hasattr(v, 'isoformat'):
-                            new_item[k] = v.isoformat()
-                        elif hasattr(v, 'strftime'):
-                            new_item[k] = str(v)
-                    return new_item
-                await ReadDbShopService().update_delivery_options(delivery_id=delivery_id, delivery=make_serializable(res))
-            except Exception as e:
-                ic(f"Failed to sync delivery options update to MongoDB: {e}")
+            await self._commit_if_in_transaction()
+            shop_id = res.get("shop_id")
+            if shop_id:
+                await self._sync_delivery_options_to_mongo(shop_id=shop_id)
         return res
 
     async def delete_delivery_options(self, delivery_id: int) -> dict | None:
@@ -843,11 +997,10 @@ class ShopService(BaseServiceModel):
                     )
         res = await self.shop_repo_obj.delete_delivery_options(delivery_id=delivery_id)
         if res:
-            try:
-                from infras.read_db.services.shop_service import ReadDbShopService
-                await ReadDbShopService().delete_delivery_options(delivery_id=delivery_id)
-            except Exception as e:
-                ic(f"Failed to sync delivery options deletion to MongoDB: {e}")
+            await self._commit_if_in_transaction()
+            target_shop_id = shop_id or res.get("shop_id")
+            if target_shop_id:
+                await self._sync_delivery_options_to_mongo(shop_id=target_shop_id)
         return res
 
     # --- Announcements Service ---
@@ -869,6 +1022,22 @@ class ShopService(BaseServiceModel):
                 await ReadDbShopService().add_announcement(shop_id=shop_id, announcement=make_serializable(res))
             except Exception as e:
                 ic(f"Failed to sync announcement to MongoDB: {e}")
+
+            status_val = str(getattr(res.get("status"), "value", res.get("status")) or "").upper()
+            if status_val == "PUBLISHED":
+                type_val = str(getattr(res.get("type"), "value", res.get("type")) or "ANNOUNCEMENT").upper()
+                type_label = "Offer" if type_val == "OFFER" else ("Update" if type_val == "UPDATES" else "Announcement")
+                await self._notify_shop_followers(
+                    shop_id=shop_id,
+                    title_template=f"{{shop_name}}: New {type_label}",
+                    message=str(res.get("message") or "").strip(),
+                    notif_type="announcement",
+                    extra_meta={
+                        "event_type": "SHOP_ANNOUNCEMENT",
+                        "announcement_id": str(res.get("id") or ""),
+                        "announcement_type": type_val,
+                    },
+                )
         return res
 
     async def get_announcements(self, shop_id: str) -> List[dict]:
@@ -893,6 +1062,22 @@ class ShopService(BaseServiceModel):
                 await ReadDbShopService().update_announcement(announcement_id=data.id, announcement=make_serializable(res))
             except Exception as e:
                 ic(f"Failed to sync announcement update to MongoDB: {e}")
+
+            status_val = str(getattr(res.get("status"), "value", res.get("status")) or "").upper()
+            if status_val == "PUBLISHED":
+                type_val = str(getattr(res.get("type"), "value", res.get("type")) or "ANNOUNCEMENT").upper()
+                type_label = "Offer" if type_val == "OFFER" else ("Update" if type_val == "UPDATES" else "Announcement")
+                await self._notify_shop_followers(
+                    shop_id=shop_id,
+                    title_template=f"{{shop_name}}: {type_label} Updated",
+                    message=str(res.get("message") or "").strip(),
+                    notif_type="announcement",
+                    extra_meta={
+                        "event_type": "SHOP_ANNOUNCEMENT",
+                        "announcement_id": str(res.get("id") or ""),
+                        "announcement_type": type_val,
+                    },
+                )
         return res
 
     async def delete_announcement(self, announcement_id: int,shop_id:str) -> dict | None:
